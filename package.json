@@ -7,7 +7,7 @@
   "scripts": {
     "start": "micro",
     "dev": "micro-dev",
-    "publish": "now --public && now alias screenshot-tester-server",
+    "deploy": "now --public && now alias screenshot-tester-server",
     "lint": "prettier --use-tabs --tab-width=4 --write index.js"
   },
   "dependencies": {
@@ -26,5 +26,10 @@
   },
   "env": {
     "NODE_ENV": "production"
+  },
+  "env": {
+    "DOMAIN": "@sts-domain",
+    "DB_URL": "@sts-db",
+    "TOKEN": "@sts-gh-token"
   }
 }

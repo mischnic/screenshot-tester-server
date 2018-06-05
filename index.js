@@ -4,7 +4,7 @@ const request = require("request-promise-native");
 const { MongoClient, Binary } = require("mongodb");
 const fs = require("fs").promises;
 
-const {TOKEN, DB_URL, DOMAIN} = process.env;
+const { TOKEN, DB_URL, DOMAIN } = process.env;
 const dbName = "screenshot-tester-server";
 
 let collection;
@@ -23,13 +23,20 @@ MongoClient.connect(
 	}
 );
 
-async function comment(repo, issue, body) {
-	console.log(repo, issue, body);
+async function comment(repo, issue, files) {
+	const body = `\
+# screenshot-tester report
+
+${files
+		.map(v => `${DOMAIN}/${repo}/${issue}/${v}.png`)
+		.map(v => `![](${v})`)
+		.join("\n")}`;
+
 	return await request({
 		method: "POST",
-		"auth": {
-			"user": "mischnic",
-			"pass": TOKEN,
+		auth: {
+			user: "mischnic",
+			pass: TOKEN
 		},
 		headers: {
 			"User-Agent": "mischnic - screenshot-tester-server"
@@ -59,8 +66,10 @@ module.exports = upload(async (req, res) => {
 					const fileData = await fs.readFile("/tmp/sts_temp");
 					doc[file] = Binary(fileData);
 				}
-				await collection.findOneAndReplace({id}, doc, {upsert: true});
-				await comment(repo, issue, "This is a test comment");
+				await collection.findOneAndReplace({ id }, doc, {
+					upsert: true
+				});
+				await comment(repo, issue, Object.keys(req.files));
 				return send(res, 200);
 			}
 		} else if (req.method == "GET") {
@@ -68,9 +77,11 @@ module.exports = upload(async (req, res) => {
 			if (match) {
 				const [_, repo, issue, file] = match;
 
-				const doc = await collection.findOne({id: `${repo}/${issue}`})
-				if(doc[file] && doc[file].buffer){
-					res.setHeader('Content-Type', 'image/png')
+				const doc = await collection.findOne({
+					id: `${repo}/${issue}`
+				});
+				if (doc[file] && doc[file].buffer) {
+					res.setHeader("Content-Type", "image/png");
 					return send(res, 200, doc[file].buffer);
 				}
 			}
