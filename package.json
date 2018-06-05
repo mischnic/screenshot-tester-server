@@ -1,0 +1,30 @@
+{
+  "name": "screenshot-tester-server",
+  "version": "0.0.0",
+  "main": "index.js",
+  "author": "Niklas Mischkulnig",
+  "license": "MIT",
+  "scripts": {
+    "start": "micro",
+    "dev": "micro-dev",
+    "publish": "now --public && now alias screenshot-tester-server",
+    "lint": "prettier --use-tabs --tab-width=4 --write index.js"
+  },
+  "dependencies": {
+    "micro": "^9.3.2",
+    "micro-upload": "^1.0.1",
+    "mongodb": "^3.0.10",
+    "request": "^2.87.0",
+    "request-promise-native": "^1.0.5"
+  },
+  "engines" : {
+    "node" : ">=10"
+  },
+  "devDependencies": {
+    "micro-dev": "^3.0.0",
+    "prettier": "^1.13.4"
+  },
+  "env": {
+    "NODE_ENV": "production"
+  }
+}
