@@ -7,7 +7,7 @@
   "scripts": {
     "start": "micro",
     "dev": "micro-dev",
-    "deploy": "now --public && now alias screenshot-tester-server",
+    "deploy": "now --public && now alias",
     "lint": "prettier --use-tabs --tab-width=4 --write index.js"
   },
   "dependencies": {
@@ -20,17 +20,25 @@
   },
   "devDependencies": {
     "micro-dev": "^3.0.0",
+    "now": "^11.2.1",
     "prettier": "^1.13.4"
   },
   "engines": {
     "node": ">=10"
   },
   "now": {
+    "alias": "screenshot-tester-server",
     "env": {
       "NODE_ENV": "production",
       "DOMAIN": "@sts-domain",
       "DB_URL": "@sts-db",
-      "TOKEN": "@sts-gh-token"
-    }
+      "GH_USER": "mischnic",
+      "GH_TOKEN": "@sts-gh-token"
+    },
+    "files": [
+      "index.js",
+      "package.json",
+      "yarn.lock"
+    ]
   }
 }

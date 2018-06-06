@@ -5,7 +5,7 @@ const request = require("request-promise-native");
 const { MongoClient, Binary } = require("mongodb");
 const fs = require("fs").promises;
 
-const { TOKEN, DB_URL, DOMAIN } = process.env;
+const { GH_USER, GH_TOKEN, DB_URL, DOMAIN } = process.env;
 const dbName = "screenshot-tester-server";
 
 let collection;
@@ -16,7 +16,7 @@ MongoClient.connect(
 		if (err) {
 			console.error(err);
 		} else {
-			console.log("Connected successfully to server");
+			console.log("Connected successfully to database");
 
 			const db = client.db(dbName);
 			collection = db.collection("images");
@@ -28,8 +28,8 @@ const github = (method, url, body = undefined) =>
 	request({
 		method: method,
 		auth: {
-			user: "mischnic",
-			pass: TOKEN
+			user: GH_USER,
+			pass: GH_TOKEN
 		},
 		headers: {
 			"User-Agent": "mischnic - screenshot-tester-server",
@@ -74,17 +74,17 @@ ${index ? `[Overview](${makeURL(id, index)})` : ""}
 ${
 		failedTestsK.length > 0
 			? `
-Failed tests (click on result to see difference):
+Failed tests (*D* in the rightmost column opens a diff):
 
-| Reference               |  Result                 |
-|-------------------------|-------------------------|
+| Reference               |  Result                 | |
+|-------------------------|-------------------------|-|
 ${failedTestsK
 					.map(k => {
 						const { ref, res, diff } = images[k];
-						return `![](${makeURL(id, ref)}) | ![[](${makeURL(
+						return `![](${makeURL(id, ref)}) | ![](${makeURL(
 							id,
-							diff
-						)})](${makeURL(id, res)})`;
+							res
+						)}) | [D](${makeURL(id, diff)})`;
 					})
 					.join("\n")}
 `
@@ -106,7 +106,13 @@ ${Object.keys(images)
 			return `<tr><td><img src="${makeURL(
 				id,
 				ref
-			)}"></td><td><img src="${makeURL(id, res)}"></td></tr>`;
+			)}"></td><td><img src="${makeURL(
+				id,
+				res
+			)}"></td><td><a target="_blank" href="${makeURL(
+				id,
+				res
+			)}">D</a></td</tr>`;
 		})
 		.join("\n")}
 </table>
