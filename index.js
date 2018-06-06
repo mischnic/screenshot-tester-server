@@ -3,6 +3,7 @@ const { upload, move } = require("micro-upload");
 const query = require("micro-query");
 const request = require("request-promise-native");
 const { MongoClient, Binary } = require("mongodb");
+const crypto = require("crypto");
 const fs = require("fs").promises;
 
 const { GH_USER, GH_TOKEN, DB_URL, DOMAIN } = process.env;
@@ -35,7 +36,7 @@ const github = (method, url, body = undefined) =>
 			"User-Agent": "mischnic - screenshot-tester-server",
 			Accept: "application/json"
 		},
-		uri: url,
+		url,
 		json: {
 			body: body
 		}
@@ -43,12 +44,21 @@ const github = (method, url, body = undefined) =>
 
 const regexExtensionFromDB = /_(html|png)$/;
 
-const makeURL = (id, v) =>
+const makeURL = (id, v, hash) =>
 	v.indexOf(DOMAIN) == -1
-		? `${DOMAIN}/${id}/${v.replace(regexExtensionFromDB, ".$1")}`
+		? `${DOMAIN}/${id}/${hash}/${v.replace(regexExtensionFromDB, ".$1")}`
 		: v;
 
-function generateBody(id, images, failed) {
+async function commentExists(url) {
+	try {
+		await github("GET", url);
+		return true;
+	} catch (e) {
+		return false;
+	}
+}
+
+function generateBody(id, images, failed, hash = "0") {
 	let index;
 	images = images.reduce((acc, [test, f, type]) => {
 		if (test) {
@@ -69,26 +79,30 @@ function generateBody(id, images, failed) {
 	return `\
 # screenshot-tester report
 
-${index ? `[Overview](${makeURL(id, index)})` : ""}
+${index ? `[Overview](${makeURL(id, index, hash)})` : ""}
+
+
+(*D* in the rightmost column opens a diff)
 
 ${
 		failedTestsK.length > 0
 			? `
-Failed tests (*D* in the rightmost column opens a diff):
+Failed tests:
 
 | Reference               |  Result                 | |
 |-------------------------|-------------------------|-|
 ${failedTestsK
 					.map(k => {
 						const { ref, res, diff } = images[k];
-						return `![](${makeURL(id, ref)}) | ![](${makeURL(
+						return `![](${makeURL(id, ref, hash)}) | ![](${makeURL(
 							id,
-							res
-						)}) | [D](${makeURL(id, diff)})`;
+							res,
+							hash
+						)}) | [D](${makeURL(id, diff, hash)})`;
 					})
 					.join("\n")}
 `
-			: "All tests passed"
+			: "**All tests passed**"
 	}
 
 <summary>Passed tests:</summary>
@@ -105,14 +119,17 @@ ${Object.keys(images)
 			const { ref, res, diff } = images[k];
 			return `<tr><td><img src="${makeURL(
 				id,
-				ref
+				ref,
+				hash
 			)}"></td><td><img src="${makeURL(
 				id,
-				res
+				res,
+				hash
 			)}"></td><td><a target="_blank" href="${makeURL(
 				id,
-				res
-			)}">D</a></td</tr>`;
+				diff,
+				hash
+			)}">D</a></td></tr>`;
 		})
 		.join("\n")}
 </table>
@@ -122,8 +139,12 @@ ${Object.keys(images)
 *This comment was created automatically by screenshot-tester-server.*`;
 }
 
-async function updateComment(id, url, images, failed) {
-	return github("PATCH", url, generateBody(id, images, failed));
+function updateComment(id, url, images, failed) {
+	return github(
+		"PATCH",
+		url,
+		generateBody(id, images, failed, crypto.randomBytes(6).toString("hex"))
+	);
 }
 
 function comment(repo, issue, images, failed) {
@@ -134,8 +155,11 @@ function comment(repo, issue, images, failed) {
 	);
 }
 
-const regexPOST = /\/([\w-]+\/[\w-]+)\/([0-9]+)/;
-const regexGET = /\/([\w-]+\/[\w-]+\/[0-9]+)\/([\w-.\/]+)/;
+const regexPOST = /^\/([\w-]+\/[\w-]+)\/([0-9]+)(?:\?.*)?$/;
+const regexGET = /^\/([\w-]+\/[\w-]+\/[0-9]+)\/[0-9a-f]+\/([\w-.\/]+)$/;
+
+const checkPermission = v =>
+	v.indexOf("mischnic") == 0 || v.indexOf("parro-it") == 0;
 
 module.exports = upload(async (req, res) => {
 	const { failed = [], os } = query(req);
@@ -143,8 +167,14 @@ module.exports = upload(async (req, res) => {
 	if (collection) {
 		if (req.method == "POST") {
 			const match = req.url.match(regexPOST);
+			console.log(req.url);
+			// /mischnic/screenshot-tester/2?os=darwin&failed=core-api
 			if (match && req.files) {
 				const [_, repo, issue] = match;
+				if (!checkPermission(repo)) {
+					return send(res, 404);
+				}
+
 				const id = `${repo}/${issue}`;
 
 				let doc = { files: {}, data: [], id };
@@ -162,7 +192,10 @@ module.exports = upload(async (req, res) => {
 				}
 
 				const oldDoc = await collection.findOne({ id });
-				if (oldDoc && oldDoc.comment_url) {
+				if (
+					oldDoc &&
+					oldDoc.comment_url /* && await commentExists(oldDoc.comment_url)*/
+				) {
 					doc = {
 						...oldDoc,
 						...doc,
@@ -198,6 +231,7 @@ module.exports = upload(async (req, res) => {
 			}
 		} else if (req.method == "GET") {
 			const match = req.url.match(regexGET);
+			// /mischnic/screenshot-tester/2/814b27604d7a/.../file.png
 			if (match) {
 				let [_, id, file] = match;
 
