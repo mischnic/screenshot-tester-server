@@ -48,11 +48,20 @@ const makeURL = (id, v) =>
 		? `${DOMAIN}/${id}/${v.replace(regexExtensionFromDB, ".$1")}`
 		: v;
 
-function generateBody(id, images) {
+function generateBody(id, images, failed) {
+	let index;
 	images = images.reduce((acc, [test, f, type]) => {
-		acc[test] = { ...(acc[test] || {}), [type]: f };
+		if (test) {
+			acc[test] = { ...(acc[test] || {}), [type]: f };
+		} else {
+			index = f;
+		}
 		return acc;
 	}, {});
+
+	const failedTestsK = Object.keys(images).filter(
+		k => failed.indexOf(k) != -1
+	);
 
 	// <!--
 	// ${JSON.stringify(files)}
@@ -60,34 +69,62 @@ function generateBody(id, images) {
 	return `\
 # screenshot-tester report
 
-[Overview](${makeURL(id, "index")})
+${index ? `[Overview](${makeURL(id, index)})` : ""}
 
+${
+		failedTestsK.length > 0
+			? `
 Failed tests (click on result to see difference):
 
 | Reference               |  Result                 |
 |-------------------------|-------------------------|
+${failedTestsK
+					.map(k => {
+						const { ref, res, diff } = images[k];
+						return `![](${makeURL(id, ref)}) | ![[](${makeURL(
+							id,
+							diff
+						)})](${makeURL(id, res)})`;
+					})
+					.join("\n")}
+`
+			: "All tests passed"
+	}
+
+<summary>Passed tests:</summary>
+<details>
+<table>
+	<tr>
+		<td>Reference</td>
+		<td>Result</td>
+	</tr>
+
 ${Object.keys(images)
+		.filter(k => failed.indexOf(k) == -1)
 		.map(k => {
 			const { ref, res, diff } = images[k];
-			return `![](${makeURL(id, ref)}) | ![[](${makeURL(
+			return `<tr><td><img src="${makeURL(
 				id,
-				diff
-			)})](${makeURL(id, res)})`;
+				ref
+			)}"></td><td><img src="${makeURL(id, res)}"></td></tr>`;
 		})
 		.join("\n")}
+</table>
+</details>
+<br>
 
 *This comment was created automatically by screenshot-tester-server.*`;
 }
 
-async function updateComment(id, url, images) {
-	return github("PATCH", url, generateBody(id, images));
+async function updateComment(id, url, images, failed) {
+	return github("PATCH", url, generateBody(id, images, failed));
 }
 
-function comment(repo, issue, images) {
+function comment(repo, issue, images, failed) {
 	return github(
 		"POST",
 		`https://api.github.com/repos/${repo}/issues/${issue}/comments`,
-		generateBody(`${repo}/${issue}`, images)
+		generateBody(`${repo}/${issue}`, images, failed)
 	);
 }
 
@@ -95,7 +132,7 @@ const regexPOST = /\/([\w-]+\/[\w-]+)\/([0-9]+)/;
 const regexGET = /\/([\w-]+\/[\w-]+\/[0-9]+)\/([\w-.\/]+)/;
 
 module.exports = upload(async (req, res) => {
-	const { failed, os } = query(req);
+	const { failed = [], os } = query(req);
 
 	if (collection) {
 		if (req.method == "POST") {
@@ -106,7 +143,7 @@ module.exports = upload(async (req, res) => {
 
 				let doc = { files: {}, data: [], id };
 				for (let file of Object.keys(req.files)) {
-					const [test, dst, type] = file.split(":");
+					const [_, dst, __] = file.split(":");
 
 					if (Array.isArray(req.files[file])) {
 						throw new Error("Duplicate file: " + file);
@@ -131,9 +168,8 @@ module.exports = upload(async (req, res) => {
 					await updateComment(
 						id,
 						oldDoc.comment_url,
-						doc.data
-							.map(v => v.split(":"))
-							.filter(v => failed.indexOf(v[0]) != -1)
+						doc.data.map(v => v.split(":")),
+						failed
 					);
 					await collection.findOneAndReplace({ id }, doc, {
 						upsert: true
@@ -142,9 +178,8 @@ module.exports = upload(async (req, res) => {
 					const { url: comment_url } = await comment(
 						repo,
 						issue,
-						Object.keys(req.files)
-							.map(v => v.split(":"))
-							.filter(v => failed.indexOf(v[0]) != -1)
+						Object.keys(req.files).map(v => v.split(":")),
+						failed
 					);
 					doc.comment_url = comment_url;
 
