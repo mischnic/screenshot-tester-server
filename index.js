@@ -1,5 +1,6 @@
 const { send, sendError, json, buffer, text } = require("micro");
 const { upload, move } = require("micro-upload");
+const query = require("micro-query");
 const request = require("request-promise-native");
 const { MongoClient, Binary } = require("mongodb");
 const fs = require("fs").promises;
@@ -42,13 +43,16 @@ const github = (method, url, body = undefined) =>
 
 const regexExtensionFromDB = /_(html|png)$/;
 
+const makeURL = (id, v) =>
+	v.indexOf(DOMAIN) == -1
+		? `${DOMAIN}/${id}/${v.replace(regexExtensionFromDB, ".$1")}`
+		: v;
+
 function generateBody(id, images) {
-	images = images.map(
-		v =>
-			v.indexOf(DOMAIN) == -1
-				? `${DOMAIN}/${id}/${v.replace(regexExtensionFromDB, ".$1")}`
-				: v
-	);
+	images = images.reduce((acc, [test, f, type]) => {
+		acc[test] = { ...(acc[test] || {}), [type]: f };
+		return acc;
+	}, {});
 
 	// <!--
 	// ${JSON.stringify(files)}
@@ -56,7 +60,21 @@ function generateBody(id, images) {
 	return `\
 # screenshot-tester report
 
-${images.map(v => `![](${v})`).join("\n")}
+[Overview](${makeURL(id, "index")})
+
+Failed tests (click on result to see difference):
+
+| Reference               |  Result                 |
+|-------------------------|-------------------------|
+${Object.keys(images)
+		.map(k => {
+			const { ref, res, diff } = images[k];
+			return `![](${makeURL(id, ref)}) | ![[](${makeURL(
+				id,
+				diff
+			)})](${makeURL(id, res)})`;
+		})
+		.join("\n")}
 
 *This comment was created automatically by screenshot-tester-server.*`;
 }
@@ -77,6 +95,8 @@ const regexPOST = /\/([\w-]+\/[\w-]+)\/([0-9]+)/;
 const regexGET = /\/([\w-]+\/[\w-]+\/[0-9]+)\/([\w-.\/]+)/;
 
 module.exports = upload(async (req, res) => {
+	const { failed, os } = query(req);
+
 	if (collection) {
 		if (req.method == "POST") {
 			const match = req.url.match(regexPOST);
@@ -84,15 +104,18 @@ module.exports = upload(async (req, res) => {
 				const [_, repo, issue] = match;
 				const id = `${repo}/${issue}`;
 
-				let doc = { files: {}, id };
+				let doc = { files: {}, data: [], id };
 				for (let file of Object.keys(req.files)) {
+					const [test, dst, type] = file.split(":");
+
 					if (Array.isArray(req.files[file])) {
 						throw new Error("Duplicate file: " + file);
 					}
 					await move(req.files[file], "/tmp/sts_temp");
 
 					const fileData = await fs.readFile("/tmp/sts_temp");
-					doc.files[file.replace(/\./g, "_")] = Binary(fileData);
+					doc.files[dst.replace(/\./g, "_")] = Binary(fileData);
+					doc.data.push(file);
 				}
 
 				const oldDoc = await collection.findOne({ id });
@@ -100,14 +123,18 @@ module.exports = upload(async (req, res) => {
 					doc = {
 						...oldDoc,
 						...doc,
-						files: { ...oldDoc.files, ...doc.files }
+						files: { ...oldDoc.files, ...doc.files },
+						data: [...oldDoc.data, ...doc.data].filter(
+							(elem, pos, arr) => arr.indexOf(elem) == pos
+						)
 					};
-					const files = [
-						...Object.keys(oldDoc.files),
-						...Object.keys(req.files)
-					];
-
-					await updateComment(id, oldDoc.comment_url, files);
+					await updateComment(
+						id,
+						oldDoc.comment_url,
+						doc.data
+							.map(v => v.split(":"))
+							.filter(v => failed.indexOf(v[0]) != -1)
+					);
 					await collection.findOneAndReplace({ id }, doc, {
 						upsert: true
 					});
@@ -116,6 +143,8 @@ module.exports = upload(async (req, res) => {
 						repo,
 						issue,
 						Object.keys(req.files)
+							.map(v => v.split(":"))
+							.filter(v => failed.indexOf(v[0]) != -1)
 					);
 					doc.comment_url = comment_url;
 

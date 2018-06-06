@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "micro": "^9.3.2",
+    "micro-query": "^0.3.0",
     "micro-upload": "^1.0.1",
     "mongodb": "^3.0.10",
     "request": "^2.87.0",
@@ -21,8 +22,8 @@
     "micro-dev": "^3.0.0",
     "prettier": "^1.13.4"
   },
-  "engines" : {
-    "node" : ">=10"
+  "engines": {
+    "node": ">=10"
   },
   "now": {
     "env": {
