@@ -9,6 +9,12 @@ const fs = require("fs").promises;
 const { GH_USER, GH_TOKEN, DB_URL, DOMAIN } = process.env;
 const dbName = "screenshot-tester-server";
 
+const TRANSLATE_PLATFORM = {
+	darwin: "macOS",
+	linux: "Linux",
+	win: "Windows"
+};
+
 const WHITELIST_IP = [
 	// AppVeyor
 	"80.109.227.78",
@@ -64,9 +70,12 @@ const github = (method, url, body = undefined) =>
 
 const regexExtensionFromDB = /_(html|png)$/;
 
-const makeURL = (id, v, hash) =>
+const makeURL = (id, v, hash, os) =>
 	v.indexOf(DOMAIN) == -1
-		? `${DOMAIN}/${id}/${hash}/${v.replace(regexExtensionFromDB, ".$1")}`
+		? `${DOMAIN}/${id}/${hash}/${os}/${v.replace(
+				regexExtensionFromDB,
+				".$1"
+		  )}`
 		: v;
 
 async function commentExists(url) {
@@ -78,50 +87,75 @@ async function commentExists(url) {
 	}
 }
 
-function generateBody(id, images, failed, hash = "0") {
-	let index;
-	images = images.reduce((acc, [test, f, type]) => {
-		if (test) {
-			acc[test] = { ...(acc[test] || {}), [type]: f };
-		} else {
-			index = f;
-		}
-		return acc;
-	}, {});
-
-	const failedTestsK = Object.keys(images).filter(
-		k => failed.indexOf(k) != -1
-	);
-
+function generateBody(id, platformImages, failed, hash = "0") {
 	return `\
 # screenshot-tester report
 
-${index ? `[Overview](${makeURL(id, index, hash)})` : ""}
-
-
 (The *D* link in the rightmost column opens a diff)
 
+${Object.entries(platformImages)
+		.map(([platform, v]) => {
+			const myFailed = failed[platform] || [];
+			const os = TRANSLATE_PLATFORM[platform] || platform;
+			let index;
+			const images = v
+				.map(v => v.split(":"))
+				.reduce((acc, [test, file, type]) => {
+					if (test) {
+						acc[test] = { ...(acc[test] || {}), [type]: file };
+					} else {
+						index = file;
+					}
+					return acc;
+				}, {});
+
+			const failedTestsK = Object.keys(images).filter(
+				k => myFailed.indexOf(k) !== -1
+			);
+
+			const general = `
+## ${os}
+${index ? `[Overview](${makeURL(id, index, hash, platform)})` : ""}
+
 ${
-		failedTestsK.length > 0
-			? `
+				failedTestsK.length > 0
+					? `
+
 Failed tests:
 
-| Reference               |  Result                 | |
-|-------------------------|-------------------------|-|
+<table>
+	<tr>
+		<td>Reference</td>
+		<td>Result</td>
+	</tr>
 ${failedTestsK
-					.map(k => {
-						const { ref, res, diff } = images[k];
-						return `![](${makeURL(id, ref, hash)}) | ![](${makeURL(
-							id,
-							res,
-							hash
-						)}) | [D](${makeURL(id, diff, hash)})`;
-					})
-					.join("\n")}
-`
-			: "**All tests passed**"
-	}
+							.map(k => {
+								const { ref, res, diff } = images[k];
+								return `<tr><td><img src="${makeURL(
+									id,
+									ref,
+									hash,
+									platform
+								)}"></td><td><img src="${makeURL(
+									id,
+									res,
+									hash,
+									platform
+								)}"></td><td><a target="_blank" href="${makeURL(
+									id,
+									diff,
+									hash,
+									platform
+								)}">D</a></td></tr>`;
+							})
+							.join("\n")}
+</table>`
+					: `<b>All tests passed</b>`
+			}`;
 
+			return (
+				general +
+				`
 <summary>Passed tests:</summary>
 <details>
 <table>
@@ -131,26 +165,32 @@ ${failedTestsK
 	</tr>
 
 ${Object.keys(images)
-		.filter(k => failed.indexOf(k) == -1)
-		.map(k => {
-			const { ref, res, diff } = images[k];
-			return `<tr><td><img src="${makeURL(
-				id,
-				ref,
-				hash
-			)}"></td><td><img src="${makeURL(
-				id,
-				res,
-				hash
-			)}"></td><td><a target="_blank" href="${makeURL(
-				id,
-				diff,
-				hash
-			)}">D</a></td></tr>`;
+					.filter(k => myFailed.indexOf(k) == -1)
+					.map(k => {
+						const { ref, res, diff } = images[k];
+						return `<tr><td><img src="${makeURL(
+							id,
+							ref,
+							hash,
+							platform
+						)}"></td><td><img src="${makeURL(
+							id,
+							res,
+							hash,
+							platform
+						)}"></td><td><a target="_blank" href="${makeURL(
+							id,
+							diff,
+							hash,
+							platform
+						)}">D</a></td></tr>`;
+					})
+					.join("\n")}
+</table>
+</details>`
+			);
 		})
 		.join("\n")}
-</table>
-</details>
 <br>
 
 *This comment was created automatically by screenshot-tester-server.*`;
@@ -173,17 +213,28 @@ function comment(repo, issue, images, failed) {
 }
 
 const regexPOST = /^\/([\w-]+\/[\w-]+)\/([0-9]+)(?:\?.*)?$/;
-const regexGET = /^\/([\w-]+\/[\w-]+\/[0-9]+)\/[0-9a-f]+\/([\w-.\/]+)$/;
+const regexGET = /^\/([\w-]+\/[\w-]+\/[0-9]+)\/[0-9a-f]+\/([\w]+)\/([\w-.\/]+)$/;
 
 const checkPermission = v =>
 	v.indexOf("mischnic") == 0 || v.indexOf("parro-it") == 0;
 
+var getClientIp = function(req) {
+	return (
+		(
+			req.headers["X-Forwarded-For"] ||
+			req.headers["x-forwarded-for"] ||
+			""
+		).split(",")[0] || req.client.remoteAddress
+	);
+};
+
 module.exports = upload(async (req, res) => {
-	const { failed = [], os } = query(req);
+	let { failed = [], os } = query(req);
+	if (!Array.isArray(failed)) failed = [failed];
 
 	if (collection) {
 		if (req.method == "POST") {
-			if (WHITELIST_IP.indexOf(req.connection.remoteAddress) == -1) {
+			if (WHITELIST_IP.indexOf(getClientIp(req)) == -1) {
 				console.error(
 					"IP blocked (not whitelisted) - " +
 						req.connection.remoteAddress
@@ -200,19 +251,20 @@ module.exports = upload(async (req, res) => {
 
 				const id = `${repo}/${issue}`;
 
-				let doc = { files: {}, data: [], id };
-				for (let file of Object.keys(req.files)) {
+				let doc = { files: { [os]: {} }, data: { [os]: [] }, id };
+				for (let [file, v] of Object.entries(req.files)) {
 					const [_, dst, __] = file.split(":");
 
-					if (Array.isArray(req.files[file])) {
+					if (Array.isArray(v)) {
 						throw new Error("Duplicate file: " + file);
 					}
-					await move(req.files[file], "/tmp/sts_temp");
+					await move(v, "/tmp/sts_temp");
 
 					const fileData = await fs.readFile("/tmp/sts_temp");
-					doc.files[dst.replace(/\./g, "_")] = Binary(fileData);
-					doc.data.push(file);
+					doc.files[os][dst.replace(/\./g, "_")] = Binary(fileData);
+					doc.data[os].push(file);
 				}
+				doc.failed = { [os]: failed };
 
 				const oldDoc = await collection.findOne({ id });
 				if (
@@ -224,15 +276,14 @@ module.exports = upload(async (req, res) => {
 						...oldDoc,
 						...doc,
 						files: { ...oldDoc.files, ...doc.files },
-						data: [...oldDoc.data, ...doc.data].filter(
-							(elem, pos, arr) => arr.indexOf(elem) == pos
-						)
+						data: { ...oldDoc.data, ...doc.data },
+						failed: { ...oldDoc.failed, ...doc.failed }
 					};
 					await updateComment(
 						id,
 						oldDoc.comment_url,
-						doc.data.map(v => v.split(":")),
-						failed
+						doc.data,
+						doc.failed
 					);
 					await collection.findOneAndReplace({ id }, doc, {
 						upsert: true
@@ -242,7 +293,7 @@ module.exports = upload(async (req, res) => {
 					const { url: comment_url } = await comment(
 						repo,
 						issue,
-						Object.keys(req.files).map(v => v.split(":")),
+						doc.data,
 						failed
 					);
 					doc.comment_url = comment_url;
@@ -256,7 +307,7 @@ module.exports = upload(async (req, res) => {
 			const match = req.url.match(regexGET);
 			// /mischnic/screenshot-tester/2/814b27604d7a/.../file.png
 			if (match) {
-				let [_, id, file] = match;
+				let [_, id, os, file] = match;
 
 				file = file.replace(/\./g, "_");
 
@@ -266,7 +317,12 @@ module.exports = upload(async (req, res) => {
 				if (!doc) {
 					return send(res, 404);
 				}
-				if (doc && doc.files[file] && doc.files[file].buffer) {
+				if (
+					doc &&
+					doc.files[os] &&
+					doc.files[os][file] &&
+					doc.files[os][file].buffer
+				) {
 					if (file.endsWith("_html")) {
 						res.setHeader(
 							"Content-Type",
@@ -275,7 +331,7 @@ module.exports = upload(async (req, res) => {
 					} else {
 						res.setHeader("Content-Type", "image/png");
 					}
-					return send(res, 200, doc.files[file].buffer);
+					return send(res, 200, doc.files[os][file].buffer);
 				} else {
 					return send(res, 500);
 				}
