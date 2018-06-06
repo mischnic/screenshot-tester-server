@@ -9,6 +9,26 @@ const fs = require("fs").promises;
 const { GH_USER, GH_TOKEN, DB_URL, DOMAIN } = process.env;
 const dbName = "screenshot-tester-server";
 
+const WHITELIST_IP = [
+	// AppVeyor
+	"80.109.227.78",
+	"74.205.54.20",
+	"104.197.110.30",
+	"104.197.145.181",
+	"146.148.85.29",
+	"67.225.139.254",
+	"67.225.138.82",
+	"67.225.139.144",
+	// local
+	"::1",
+	"127.0.0.1"
+	// Travis ...
+];
+
+request.get("https://dnsjson.com/nat.travisci.net/A.json").then(v => {
+	WHITELIST_IP.push(...JSON.parse(v).results.records);
+});
+
 let collection;
 
 MongoClient.connect(
@@ -73,16 +93,13 @@ function generateBody(id, images, failed, hash = "0") {
 		k => failed.indexOf(k) != -1
 	);
 
-	// <!--
-	// ${JSON.stringify(files)}
-	// -->
 	return `\
 # screenshot-tester report
 
 ${index ? `[Overview](${makeURL(id, index, hash)})` : ""}
 
 
-(*D* in the rightmost column opens a diff)
+(The *D* link in the rightmost column opens a diff)
 
 ${
 		failedTestsK.length > 0
@@ -166,8 +183,14 @@ module.exports = upload(async (req, res) => {
 
 	if (collection) {
 		if (req.method == "POST") {
+			if (WHITELIST_IP.indexOf(req.connection.remoteAddress) == -1) {
+				console.error(
+					"IP blocked (not whitelisted) - " +
+						req.connection.remoteAddress
+				);
+				return send(res, 500);
+			}
 			const match = req.url.match(regexPOST);
-			console.log(req.url);
 			// /mischnic/screenshot-tester/2?os=darwin&failed=core-api
 			if (match && req.files) {
 				const [_, repo, issue] = match;
@@ -196,6 +219,7 @@ module.exports = upload(async (req, res) => {
 					oldDoc &&
 					oldDoc.comment_url /* && await commentExists(oldDoc.comment_url)*/
 				) {
+					// append images and update comment to contain all
 					doc = {
 						...oldDoc,
 						...doc,
@@ -214,6 +238,7 @@ module.exports = upload(async (req, res) => {
 						upsert: true
 					});
 				} else {
+					// create a new comment
 					const { url: comment_url } = await comment(
 						repo,
 						issue,
@@ -222,9 +247,7 @@ module.exports = upload(async (req, res) => {
 					);
 					doc.comment_url = comment_url;
 
-					await collection.findOneAndReplace({ id }, doc, {
-						upsert: true
-					});
+					await collection.insertOne(doc);
 				}
 
 				return send(res, 200);
