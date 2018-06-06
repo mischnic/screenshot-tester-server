@@ -40,36 +40,41 @@ const github = (method, url, body = undefined) =>
 		}
 	});
 
-function generateBody(id, files) {
-	files = files.map(
-		v => (v.indexOf(DOMAIN) == -1 ? `${DOMAIN}/${id}/${v}.png` : v)
+const regexExtensionFromDB = /_(html|png)$/;
+
+function generateBody(id, images) {
+	images = images.map(
+		v =>
+			v.indexOf(DOMAIN) == -1
+				? `${DOMAIN}/${id}/${v.replace(regexExtensionFromDB, ".$1")}`
+				: v
 	);
 
+	// <!--
+	// ${JSON.stringify(files)}
+	// -->
 	return `\
-<!--
-${JSON.stringify(files)}
--->
 # screenshot-tester report
 
-${files.map(v => `![](${v})`).join("\n")}
+${images.map(v => `![](${v})`).join("\n")}
 
 *This comment was created automatically by screenshot-tester-server.*`;
 }
 
-async function updateComment(id, url, files) {
-	return github("PATCH", url, generateBody(id, files));
+async function updateComment(id, url, images) {
+	return github("PATCH", url, generateBody(id, images));
 }
 
-function comment(repo, issue, files) {
+function comment(repo, issue, images) {
 	return github(
 		"POST",
 		`https://api.github.com/repos/${repo}/issues/${issue}/comments`,
-		generateBody(`${repo}/${issue}`, files)
+		generateBody(`${repo}/${issue}`, images)
 	);
 }
 
 const regexPOST = /\/([\w-]+\/[\w-]+)\/([0-9]+)/;
-const regexGET = /\/([\w-]+\/[\w-]+\/[0-9]+)\/([\w-.]+)\.png/;
+const regexGET = /\/([\w-]+\/[\w-]+\/[0-9]+)\/([\w-.\/]+)/;
 
 module.exports = upload(async (req, res) => {
 	if (collection) {
@@ -81,10 +86,13 @@ module.exports = upload(async (req, res) => {
 
 				let doc = { files: {}, id };
 				for (let file of Object.keys(req.files)) {
+					if (Array.isArray(req.files[file])) {
+						throw new Error("Duplicate file: " + file);
+					}
 					await move(req.files[file], "/tmp/sts_temp");
 
 					const fileData = await fs.readFile("/tmp/sts_temp");
-					doc.files[file] = Binary(fileData);
+					doc.files[file.replace(/\./g, "_")] = Binary(fileData);
 				}
 
 				const oldDoc = await collection.findOne({ id });
@@ -121,7 +129,9 @@ module.exports = upload(async (req, res) => {
 		} else if (req.method == "GET") {
 			const match = req.url.match(regexGET);
 			if (match) {
-				const [_, id, file] = match;
+				let [_, id, file] = match;
+
+				file = file.replace(/\./g, "_");
 
 				const doc = await collection.findOne({
 					id
@@ -130,7 +140,14 @@ module.exports = upload(async (req, res) => {
 					return send(res, 404);
 				}
 				if (doc && doc.files[file] && doc.files[file].buffer) {
-					res.setHeader("Content-Type", "image/png");
+					if (file.endsWith("_html")) {
+						res.setHeader(
+							"Content-Type",
+							"text/html; charset=utf-8"
+						);
+					} else {
+						res.setHeader("Content-Type", "image/png");
+					}
 					return send(res, 200, doc.files[file].buffer);
 				} else {
 					return send(res, 500);
