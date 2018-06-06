@@ -17,19 +17,19 @@
     "request": "^2.87.0",
     "request-promise-native": "^1.0.5"
   },
-  "engines" : {
-    "node" : ">=10"
-  },
   "devDependencies": {
     "micro-dev": "^3.0.0",
     "prettier": "^1.13.4"
   },
-  "env": {
-    "NODE_ENV": "production"
+  "engines" : {
+    "node" : ">=10"
   },
-  "env": {
-    "DOMAIN": "@sts-domain",
-    "DB_URL": "@sts-db",
-    "TOKEN": "@sts-gh-token"
+  "now": {
+    "env": {
+      "NODE_ENV": "production",
+      "DOMAIN": "@sts-domain",
+      "DB_URL": "@sts-db",
+      "TOKEN": "@sts-gh-token"
+    }
   }
 }
