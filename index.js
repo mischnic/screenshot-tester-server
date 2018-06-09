@@ -9,11 +9,11 @@ const fs = require("fs").promises;
 const { GH_USER, GH_TOKEN, DB_URL, DOMAIN } = process.env;
 const dbName = "screenshot-tester-server";
 
-const TRANSLATE_PLATFORM = {
-	darwin: "macOS",
-	linux: "Linux",
-	win: "Windows"
-};
+const translatePlatform = platform =>
+	platform
+		.replace(/^win/, "Windows ")
+		.replace(/^darwin/, "macOS")
+		.replace(/^linux/, "Linux");
 
 const WHITELIST_IP = [
 	// AppVeyor
@@ -27,7 +27,8 @@ const WHITELIST_IP = [
 	"67.225.139.144",
 	// local
 	"::1",
-	"127.0.0.1"
+	"127.0.0.1",
+	"::ffff:127.0.0.1" // ???
 	// Travis ...
 ];
 
@@ -36,7 +37,6 @@ request.get("https://dnsjson.com/nat.travisci.net/A.json").then(v => {
 });
 
 let collection;
-
 MongoClient.connect(
 	DB_URL,
 	function(err, client) {
@@ -96,7 +96,7 @@ function generateBody(id, platformImages, failed, hash = "0") {
 ${Object.entries(platformImages)
 		.map(([platform, v]) => {
 			const myFailed = failed[platform] || [];
-			const os = TRANSLATE_PLATFORM[platform] || platform;
+			const os = translatePlatform(platform);
 			let index;
 			const images = v
 				.map(v => v.split(":"))
@@ -236,10 +236,9 @@ module.exports = upload(async (req, res) => {
 		if (req.method == "POST") {
 			if (WHITELIST_IP.indexOf(getClientIp(req)) == -1) {
 				console.error(
-					"IP blocked (not whitelisted) - " +
-						req.connection.remoteAddress
+					"IP blocked (not whitelisted) - " + getClientIp(req)
 				);
-				return send(res, 500);
+				return send(res, 403);
 			}
 			const match = req.url.match(regexPOST);
 			// /mischnic/screenshot-tester/2?os=darwin&failed=core-api
@@ -305,7 +304,7 @@ module.exports = upload(async (req, res) => {
 			}
 		} else if (req.method == "GET") {
 			const match = req.url.match(regexGET);
-			// /mischnic/screenshot-tester/2/814b27604d7a/.../file.png
+			// /mischnic/screenshot-tester/2/814b27604d7a/os/.../file.png
 			if (match) {
 				let [_, id, os, file] = match;
 
@@ -314,7 +313,7 @@ module.exports = upload(async (req, res) => {
 				const doc = await collection.findOne({
 					id
 				});
-				if (!doc) {
+				if (!doc || !doc.files[os] || !doc.files[os][file]) {
 					return send(res, 404);
 				}
 				if (

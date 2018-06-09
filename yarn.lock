@@ -1240,8 +1240,8 @@ normalize-path@^2.1.1:
     remove-trailing-separator "^1.0.1"
 
 now@^11.2.1:
-  version "11.2.1"
-  resolved "https://registry.yarnpkg.com/now/-/now-11.2.1.tgz#33fea6a78a464e554780e4a6134d1a98b7e9f49e"
+  version "11.2.2"
+  resolved "https://registry.yarnpkg.com/now/-/now-11.2.2.tgz#c513fbc6d39cdde72a225d5607e61c211a79575a"
 
 npm-bundled@^1.0.1:
   version "1.0.3"
@@ -1391,8 +1391,8 @@ posix-character-classes@^0.1.0:
   resolved "https://registry.yarnpkg.com/posix-character-classes/-/posix-character-classes-0.1.1.tgz#01eac0fe3b5af71a2a6c02feabb8c1fef7e00eab"
 
 prettier@^1.13.4:
-  version "1.13.4"
-  resolved "https://registry.yarnpkg.com/prettier/-/prettier-1.13.4.tgz#31bbae6990f13b1093187c731766a14036fa72e6"
+  version "1.13.5"
+  resolved "https://registry.yarnpkg.com/prettier/-/prettier-1.13.5.tgz#7ae2076998c8edce79d63834e9b7b09fead6bfd0"
 
 pretty-error@2.1.1:
   version "2.1.1"
