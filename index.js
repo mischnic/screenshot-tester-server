@@ -71,12 +71,14 @@ const github = (method, url, body = undefined) =>
 const regexExtensionFromDB = /_(html|png)$/;
 
 const makeURL = (id, v, hash, os) =>
-	v.indexOf(DOMAIN) == -1
-		? `${DOMAIN}/${id}/${hash}/${os}/${v.replace(
-				regexExtensionFromDB,
-				".$1"
-		  )}`
-		: v;
+	encodeURI(
+		v.indexOf(DOMAIN) == -1
+			? `${DOMAIN}/${id}/${hash}/${os}/${v.replace(
+					regexExtensionFromDB,
+					".$1"
+			  )}`
+			: v
+	);
 
 async function commentExists(url) {
 	try {
@@ -88,38 +90,40 @@ async function commentExists(url) {
 }
 
 function generateBody(id, platformImages, failed, hash = "0") {
-	return `\
+	return (
+		`
 # screenshot-tester report
 
 (The *D* link in the rightmost column opens a diff)
 
-${Object.entries(platformImages)
-		.map(([platform, v]) => {
-			const myFailed = failed[platform] || [];
-			const os = translatePlatform(platform);
-			let index;
-			const images = v
-				.map(v => v.split(":"))
-				.reduce((acc, [test, file, type]) => {
-					if (test) {
-						acc[test] = { ...(acc[test] || {}), [type]: file };
-					} else {
-						index = file;
-					}
-					return acc;
-				}, {});
+` +
+		Object.entries(platformImages)
+			.map(([platform, v]) => {
+				const myFailed = failed[platform] || [];
+				const os = translatePlatform(platform);
+				let index;
+				const images = v
+					.map(v => v.split(":"))
+					.reduce((acc, [test, file, type]) => {
+						if (test) {
+							acc[test] = { ...(acc[test] || {}), [type]: file };
+						} else {
+							index = file;
+						}
+						return acc;
+					}, {});
 
-			const failedTestsK = Object.keys(images).filter(
-				k => myFailed.indexOf(k) !== -1
-			);
+				const failedTestsK = Object.keys(images).filter(
+					k => myFailed.indexOf(k) !== -1
+				);
 
-			const general = `
+				const general = `
 ## ${os}
 ${index ? `[Overview](${makeURL(id, index, hash, platform)})` : ""}
 
 ${
-				failedTestsK.length > 0
-					? `
+					failedTestsK.length > 0
+						? `
 
 Failed tests:
 
@@ -129,33 +133,34 @@ Failed tests:
 		<td>Result</td>
 	</tr>
 ${failedTestsK
-							.map(k => {
-								const { ref, res, diff } = images[k];
-								return `<tr><td><img src="${makeURL(
-									id,
-									ref,
-									hash,
-									platform
-								)}"></td><td><img src="${makeURL(
-									id,
-									res,
-									hash,
-									platform
-								)}"></td><td><a target="_blank" href="${makeURL(
-									id,
-									diff,
-									hash,
-									platform
-								)}">D</a></td></tr>`;
-							})
-							.join("\n")}
+								.map(k => {
+									const { ref, res, diff } = images[k];
+									return `<tr><td><img src="${makeURL(
+										id,
+										ref,
+										hash,
+										platform
+									)}"></td><td><img src="${makeURL(
+										id,
+										res,
+										hash,
+										platform
+									)}"></td><td><a target="_blank" href="${makeURL(
+										id,
+										diff,
+										hash,
+										platform
+									)}">D</a></td></tr>`;
+								})
+								.join("\n")}
 </table>`
-					: `<b>All tests passed</b>`
-			}`;
+						: `<b>All tests passed</b>`
+				}`;
 
-			return (
-				general +
-				`
+				const passedList =
+					Object.keys(images).length == 0
+						? ""
+						: `
 <summary>Passed tests:</summary>
 <details>
 <table>
@@ -165,35 +170,38 @@ ${failedTestsK
 	</tr>
 
 ${Object.keys(images)
-					.filter(k => myFailed.indexOf(k) == -1)
-					.map(k => {
-						const { ref, res, diff } = images[k];
-						return `<tr><td><img src="${makeURL(
-							id,
-							ref,
-							hash,
-							platform
-						)}"></td><td><img src="${makeURL(
-							id,
-							res,
-							hash,
-							platform
-						)}"></td><td><a target="_blank" href="${makeURL(
-							id,
-							diff,
-							hash,
-							platform
-						)}">D</a></td></tr>`;
-					})
-					.join("\n")}
+								.filter(k => myFailed.indexOf(k) == -1)
+								.map(k => {
+									const { ref, res, diff } = images[k];
+									return `<tr><td><img src="${makeURL(
+										id,
+										ref,
+										hash,
+										platform
+									)}"></td><td><img src="${makeURL(
+										id,
+										res,
+										hash,
+										platform
+									)}"></td><td><a target="_blank" href="${makeURL(
+										id,
+										diff,
+										hash,
+										platform
+									)}">D</a></td></tr>`;
+								})
+								.join("\n")}
 </table>
-</details>`
-			);
-		})
-		.join("\n")}
+</details>`;
+
+				return general + passedList;
+			})
+			.join("\n") +
+		`
 <br>
 
-*This comment was created automatically by screenshot-tester-server.*`;
+*This comment was created automatically by screenshot-tester-server.*`
+	);
 }
 
 function updateComment(id, url, images, failed) {
@@ -213,7 +221,7 @@ function comment(repo, issue, images, failed) {
 }
 
 const regexPOST = /^\/([\w-]+\/[\w-]+)\/([0-9]+)(?:\?.*)?$/;
-const regexGET = /^\/([\w-]+\/[\w-]+\/[0-9]+)\/[0-9a-f]+\/([\w]+)\/([\w-.\/]+)$/;
+const regexGET = /^\/([\w-]+\/[\w-]+\/[0-9]+)\/[0-9a-f]+\/([\w-%]+)\/([\w-.\/%]+)$/;
 
 const checkPermission = v =>
 	v.indexOf("mischnic") == 0 || v.indexOf("parro-it") == 0;
@@ -242,11 +250,13 @@ module.exports = upload(async (req, res) => {
 			}
 			const match = req.url.match(regexPOST);
 			// /mischnic/screenshot-tester/2?os=darwin&failed=core-api
-			if (match && req.files) {
+			if (match) {
 				const [_, repo, issue] = match;
 				if (!checkPermission(repo)) {
-					return send(res, 404);
+					console.error("Not allowed - " + repo);
+					return send(res, 403);
 				}
+				req.files = req.files || {};
 
 				const id = `${repo}/${issue}`;
 
@@ -305,14 +315,17 @@ module.exports = upload(async (req, res) => {
 		} else if (req.method == "GET") {
 			const match = req.url.match(regexGET);
 			// /mischnic/screenshot-tester/2/814b27604d7a/os/.../file.png
+
 			if (match) {
 				let [_, id, os, file] = match;
 
-				file = file.replace(/\./g, "_");
+				os = decodeURI(os);
+				file = decodeURI(file).replace(/\./g, "_");
 
 				const doc = await collection.findOne({
 					id
 				});
+
 				if (!doc || !doc.files[os] || !doc.files[os][file]) {
 					return send(res, 404);
 				}

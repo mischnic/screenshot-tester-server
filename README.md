@@ -16,13 +16,13 @@ A helper for [screenshot-tester](https://github.com/mischnic/screenshot-tester) 
       │                                    │
       │                                    │ Upload images & status
       │                                    │
+      │                                    │
       │                                    v
-      │                            
-┌─────┴────────┐              ┌───────────────────────────┐             ┌──────────────────┐
-│              │   Comment    │                           ├───────────> │                  │
-│    GitHub    │ <────────────│  screenshot-tester-server │   Images    │ MongoDB Database │
-│              │              │                           │ <───────────┤                  │
-└──────────────┘              └───────────────────────────┘             └──────────────────┘
+┌─────┴────────┐              ┌───────────────────────────┐                 ┌──────────────────┐
+│              │   Comment    │                           ├───────────────> │                  │
+│    GitHub    │ <────────────│  screenshot-tester-server │   Images/Data   │ MongoDB Database │
+│              │              │                           │ <───────────────┤                  │
+└──────────────┘              └───────────────────────────┘                 └──────────────────┘
 
 ```
 
@@ -36,7 +36,7 @@ Using environment variables:
 
 ## Usage
 
-- screenshot-tester's `pushToServer` function.
+- Via screenshot-tester's `pushToServer` function.
 
 - Manually using curl:
 ```sh

@@ -7,7 +7,7 @@
   "scripts": {
     "start": "micro",
     "dev": "micro-dev",
-    "deploy": "now --public && now alias",
+    "deploy": "now --public && now alias && now rm screenshot-tester-server -y -s",
     "lint": "prettier --use-tabs --tab-width=4 --write index.js"
   },
   "dependencies": {
