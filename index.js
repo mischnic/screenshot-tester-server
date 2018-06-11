@@ -118,7 +118,7 @@ function generateBody(id, platformImages, failed, hash = "0") {
 				);
 
 				const general = `
-## ${os}
+## ${failedTestsK.length > 0 ? "❌" : "✅"} ${os}
 ${index ? `[Overview](${makeURL(id, index, hash, platform)})` : ""}
 
 ${
@@ -200,7 +200,7 @@ ${Object.keys(images)
 		`
 <br>
 
-*This comment was created automatically by screenshot-tester-server.*`
+*This comment was created automatically by [screenshot-tester-server](https://github.com/mischnic/screenshot-tester-server).*`
 	);
 }
 
@@ -250,7 +250,7 @@ module.exports = upload(async (req, res) => {
 			}
 			const match = req.url.match(regexPOST);
 			// /mischnic/screenshot-tester/2?os=darwin&failed=core-api
-			if (match) {
+			if (match && os) {
 				const [_, repo, issue] = match;
 				if (!checkPermission(repo)) {
 					console.error("Not allowed - " + repo);
