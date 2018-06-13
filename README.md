@@ -60,5 +60,32 @@ curl \
 -F "text:reference/darwin/text.js.png:ref=@reference/darwin/text.js.png" \
 -F "text:temp/text.js.png:res=@temp/text.js.png" \
 -F "text:temp/text.js_diff.png:diff=@temp/text.js_diff.png" \
-'https://example/owner/test_repo/pr_number?failed=text&failed=grid&os=darwin'
+'https://example.org/owner/test_repo/pr_number?failed=text&failed=grid&os=darwin'
 ```
+
+## Exposed URLs / "API"
+
+- **POST**: `https://host.com/[owner]/[repo]/[issue]?os=darwin&failed=my_test`
+
+Create (or update) a comment in the `owner/repo` repository and pull request no. `issue`. Files are to be sent in a form (curl example above) with the keys indicating the file type and destination path:
+```js
+      await request.post({
+        url: host + "/" + repoId + "/" + issue,
+        qs: {
+          os: "darwin"
+          failed: ["my_test"]
+        },
+        formData: {
+          ":index.html:": : fs.createReadStream("tests/output/index.html"),
+          "area-adv:reference/darwin/area-adv.js.png:ref": fs.createReadStream("tests/output/reference/darwin/area-adv.js.png")
+        }
+      });
+```
+
+- **GET**: `https://host.com/[owner]/[repo]/[issue]/[some hash (hex)]/[os]/path/to/file.ext`
+
+Get a file uploaded previously.
+
+- **POST**: `https://host.com/cleanup`
+
+Cleans up the database (removes data from deleted comments).
