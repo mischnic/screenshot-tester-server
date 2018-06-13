@@ -70,15 +70,15 @@ const github = (method, url, body = undefined) =>
 
 const regexExtensionFromDB = /_(html|png)$/;
 
-const makeURL = (id, v, hash, os) =>
-	encodeURI(
-		v.indexOf(DOMAIN) == -1
-			? `${DOMAIN}/${id}/${hash}/${os}/${v.replace(
+const makeURL = (id, f, hash, os) =>
+	f && f.indexOf(DOMAIN) == -1
+		? encodeURI(
+				`${DOMAIN}/${id}/${hash}/${os}/${f.replace(
 					regexExtensionFromDB,
 					".$1"
-			  )}`
-			: v
-	);
+				)}`
+		  )
+		: f;
 
 async function commentExists(url) {
 	try {
@@ -267,6 +267,10 @@ module.exports = upload(async (req, res) => {
 					if (Array.isArray(v)) {
 						throw new Error("Duplicate file: " + file);
 					}
+					if (!dst) {
+						return send(res, 400);
+					}
+
 					await move(v, "/tmp/sts_temp");
 
 					const fileData = await fs.readFile("/tmp/sts_temp");
@@ -288,12 +292,14 @@ module.exports = upload(async (req, res) => {
 						data: { ...oldDoc.data, ...doc.data },
 						failed: { ...oldDoc.failed, ...doc.failed }
 					};
+
 					await updateComment(
 						id,
 						oldDoc.comment_url,
 						doc.data,
 						doc.failed
 					);
+
 					await collection.findOneAndReplace({ id }, doc, {
 						upsert: true
 					});
@@ -329,6 +335,7 @@ module.exports = upload(async (req, res) => {
 				if (!doc || !doc.files[os] || !doc.files[os][file]) {
 					return send(res, 404);
 				}
+
 				if (
 					doc &&
 					doc.files[os] &&
