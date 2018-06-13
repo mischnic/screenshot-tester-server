@@ -222,6 +222,7 @@ function comment(repo, issue, images, failed) {
 
 const regexPOST = /^\/([\w-]+\/[\w-]+)\/([0-9]+)(?:\?.*)?$/;
 const regexGET = /^\/([\w-]+\/[\w-]+\/[0-9]+)\/[0-9a-f]+\/([\w-%]+)\/([\w-.\/%]+)$/;
+const regexCleanup = /^\/cleanup$/;
 
 const checkPermission = v =>
 	v.indexOf("mischnic") == 0 || v.indexOf("parro-it") == 0;
@@ -248,7 +249,7 @@ module.exports = upload(async (req, res) => {
 				);
 				return send(res, 403);
 			}
-			const match = req.url.match(regexPOST);
+			let match = req.url.match(regexPOST);
 			// /mischnic/screenshot-tester/2?os=darwin&failed=core-api
 			if (match && os) {
 				const [_, repo, issue] = match;
@@ -317,6 +318,25 @@ module.exports = upload(async (req, res) => {
 				}
 
 				return send(res, 200);
+			} else if ((match = req.url.match(regexCleanup))) {
+				// /cleanup
+				Promise.resolve().then(async () => {
+					const results = await collection.find().toArray();
+
+					for (let x of results) {
+						try {
+							await github("GET", x.comment_url);
+						} catch (e) {
+							if (e.statusCode === 404) {
+								await collection.deleteOne({ id: x.id });
+								console.log("Cleaned up:", x.id);
+							}
+						}
+					}
+					console.log("Cleanup finished");
+				});
+
+				return send(res, 200);
 			}
 		} else if (req.method == "GET") {
 			const match = req.url.match(regexGET);
@@ -356,6 +376,8 @@ module.exports = upload(async (req, res) => {
 				}
 			}
 		}
+	} else {
+		return send(res, 500);
 	}
 
 	return send(res, 400);
