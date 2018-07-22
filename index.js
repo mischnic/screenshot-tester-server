@@ -9,6 +9,62 @@ const fs = require("fs").promises;
 const { GH_USER, GH_TOKEN, DB_URL, DOMAIN } = process.env;
 const dbName = "screenshot-tester-server";
 
+const HOMEPAGE = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body {
+	height: 100vh;
+	margin: 0;
+
+	display: flex;
+	justify-content: center;
+	align-items: center;
+}
+a {
+	display: block;
+	text-align: center;
+	color: black;
+	font: 1.7em monospace;
+}
+@media (max-width: 800px) {
+	pre {
+		display: none;
+	}
+}
+</style>
+</head>
+<body>
+<div>
+<a href="https://github.com/mischnic/screenshot-tester-server">
+screenshot-tester-server
+</a>
+<br>
+<pre><code/>
+                             ┌────────────────────────┐
+                             │                        │
+      ┌────────────────────> │     CI build service   │
+      │                      │     (e.g. Travis)      │
+      │                      │                        │
+      │                      └─────────────┬──────────┘
+      │                                    │
+      │                                    │ Upload images & status
+      │                                    │
+      │                                    │
+      │                                    v
+┌─────┴────────┐              ┌───────────────────────────┐                 ┌──────────────────┐
+│              │   Comment    │                           ├───────────────> │                  │
+│    GitHub    │ <────────────│  screenshot-tester-server │   Images/Data   │ MongoDB Database │
+│              │              │                           │ <───────────────┤                  │
+└──────────────┘              └───────────────────────────┘                 └──────────────────┘
+
+</code></pre>
+</div>
+</body>
+</html>`;
+
 const translatePlatform = platform =>
 	platform
 		.replace(/^win/, "Windows ")
@@ -156,9 +212,10 @@ ${failedTestsK
 </table>`
 						: `<b>All tests passed</b>`
 				}`;
-
+				const passedTestsK = Object.keys(images)
+								.filter(k => myFailed.indexOf(k) == -1);
 				const passedList =
-					Object.keys(images).length == 0
+					passedTestsK.length == 0
 						? ""
 						: `
 <summary>Passed tests:</summary>
@@ -169,8 +226,7 @@ ${failedTestsK
 		<td>Result</td>
 	</tr>
 
-${Object.keys(images)
-								.filter(k => myFailed.indexOf(k) == -1)
+${passedTestsK
 								.map(k => {
 									const { ref, res, diff } = images[k];
 									return `<tr><td><img src="${makeURL(
@@ -375,6 +431,8 @@ module.exports = upload(async (req, res) => {
 					return send(res, 500);
 				}
 			}
+
+			return send(res, 200, HOMEPAGE);
 		}
 	} else {
 		return send(res, 500);

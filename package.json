@@ -27,7 +27,7 @@
     "node": ">=10"
   },
   "now": {
-    "alias": "screenshot-tester-server",
+    "alias": "screenshot-tester-server.mischnic.ml",
     "env": {
       "NODE_ENV": "production",
       "DOMAIN": "@sts-domain",
