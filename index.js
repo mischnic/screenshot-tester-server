@@ -212,8 +212,9 @@ ${failedTestsK
 </table>`
 						: `<b>All tests passed</b>`
 				}`;
-				const passedTestsK = Object.keys(images)
-								.filter(k => myFailed.indexOf(k) == -1);
+				const passedTestsK = Object.keys(images).filter(
+					k => myFailed.indexOf(k) == -1
+				);
 				const passedList =
 					passedTestsK.length == 0
 						? ""
@@ -418,14 +419,14 @@ module.exports = upload(async (req, res) => {
 					doc.files[os][file] &&
 					doc.files[os][file].buffer
 				) {
-					if (file.endsWith("_html")) {
-						res.setHeader(
-							"Content-Type",
-							"text/html; charset=utf-8"
-						);
-					} else {
-						res.setHeader("Content-Type", "image/png");
-					}
+					res.setHeader(
+						"Content-Type",
+						file.endsWith("_html")
+							? "text/html; charset=utf-8"
+							: "image/png"
+					);
+					res.setHeader("Cache-Control", "public, max-age=1209600");
+
 					return send(res, 200, doc.files[os][file].buffer);
 				} else {
 					return send(res, 500);
