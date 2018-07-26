@@ -8,7 +8,7 @@
     "start": "micro",
     "dev": "micro-dev",
     "deploy": "now --public && now alias && now rm screenshot-tester-server -y -s",
-    "lint": "prettier --use-tabs --tab-width=4 --write index.js"
+    "lint": "prettier --use-tabs --tab-width=4 --write index.js comment.js"
   },
   "dependencies": {
     "micro": "^9.3.2",
