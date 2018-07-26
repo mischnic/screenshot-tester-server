@@ -36,6 +36,7 @@
       "GH_TOKEN": "@sts-gh-token"
     },
     "files": [
+      "comment.js",
       "index.js",
       "package.json",
       "yarn.lock"

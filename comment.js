@@ -95,58 +95,60 @@ function generateBody(id, platformImages, platformFailed, hash = "0") {
 				}, {})
 		)
 			.map(([platformNormalized, v]) => {
-				const data = Object.entries(v).map(([platform, v]) => {
-					const failed = platformFailed[platform] || [];
-					const os = translatePlatform(platform);
-					let index;
-					const images = v
-						.map(v => v.split(":"))
-						.reduce((acc, [test, file, type]) => {
-							if (test) {
-								acc[test] = {
-									...(acc[test] || {}),
-									[type]: file
-								};
-							} else {
-								index = file;
-							}
-							return acc;
-						}, {});
+				const data = Object.entries(v)
+					.sort(([a], [b]) => a < b)
+					.map(([platform, v]) => {
+						const failed = platformFailed[platform] || [];
+						const os = translatePlatform(platform);
+						let index;
+						const images = v
+							.map(v => v.split(":"))
+							.reduce((acc, [test, file, type]) => {
+								if (test) {
+									acc[test] = {
+										...(acc[test] || {}),
+										[type]: file
+									};
+								} else {
+									index = file;
+								}
+								return acc;
+							}, {});
 
-					const failedTestsKeys = Object.keys(images).filter(
-						k => failed.indexOf(k) !== -1
-					);
-					const passedTestsKeys = Object.keys(images).filter(
-						k => failed.indexOf(k) === -1
-					);
+						const failedTestsKeys = Object.keys(images).filter(
+							k => failed.indexOf(k) !== -1
+						);
+						const passedTestsKeys = Object.keys(images).filter(
+							k => failed.indexOf(k) === -1
+						);
 
-					const header = `
+						const header = `
 ### ${failedTestsKeys.length > 0 ? "❌" : "✅"} ${os}
 ${index ? `[Overview](${makeURL(id, index, hash, platform)})` : ""}`;
 
-					const failedList =
-						failedTestsKeys.length > 0
-							? `
+						const failedList =
+							failedTestsKeys.length > 0
+								? `
 Failed tests:
 
 ${makeTable(id, platform, hash, failedTestsKeys, images)}
 `
-							: "";
+								: "";
 
-					const passedList =
-						passedTestsKeys.length > 0
-							? `
+						const passedList =
+							passedTestsKeys.length > 0
+								? `
 <summary>Passed tests:</summary>
 <details>
 ${makeTable(id, platform, hash, passedTestsKeys, images)}
 </details>`
-							: "";
+								: "";
 
-					return header + failedList + passedList;
-				});
+						return header + failedList + passedList;
+					});
 
 				return (
-					`## ${translatePlatform(platformNormalized)}\n` +
+					`\n## ${translatePlatform(platformNormalized)}\n` +
 					data.join("\n")
 				);
 			})
