@@ -120,8 +120,6 @@ const github = (method, url, body = undefined) =>
 		}
 	});
 
-const regexExtensionFromDB = /_(html|png)$/;
-
 async function commentExists(url) {
 	try {
 		await github("GET", url);

@@ -1,20 +1,82 @@
+const { DOMAIN } = process.env;
+
+const regexExtensionFromDB = /_(html|png)$/;
+
 const translatePlatform = platform =>
 	platform
 		.replace(/^win/, "Windows ")
 		.replace(/^darwin/, "macOS")
 		.replace(/^linux/, "Linux");
 
-const makeURL = (id, f, hash, os) =>
-	f && f.indexOf(DOMAIN) == -1
+const getPlatform = s => {
+	if (s.startsWith("win")) {
+		return "win";
+	} else if (s.startsWith("darwin")) {
+		return "darwin";
+	} else if (s.startsWith("linux")) {
+		return "linux";
+	}
+	return null;
+};
+
+const makeURL = (id, file, hash, os) =>
+	file && file.indexOf(DOMAIN) == -1
 		? encodeURI(
-				`${DOMAIN}/${id}/${hash}/${os}/${f.replace(
+				`${DOMAIN}/${id}/${hash}/${os}/${file.replace(
 					regexExtensionFromDB,
 					".$1"
 				)}`
 		  )
 		: f;
 
-function generateBody(id, platformImages, failed, hash = "0") {
+function makeTable(id, platform, hash, keys, images) {
+	return `<table>
+	<tr>
+		<td>Reference</td>
+		<td>Result</td>
+	</tr>
+${keys
+		.map(k => {
+			const { ref, res, diff } = images[k];
+			return `<tr><td><img src="${makeURL(
+				id,
+				ref,
+				hash,
+				platform
+			)}"></td><td><img src="${makeURL(
+				id,
+				res,
+				hash,
+				platform
+			)}"></td><td><a target="_blank" href="${makeURL(
+				id,
+				diff,
+				hash,
+				platform
+			)}">D</a></td></tr>`;
+		})
+		.join("\n")}
+</table>`;
+}
+
+/*
+
+id:
+	"mischnic/screenshot-tester/2"
+
+platformImages:
+	{
+		'darwin - Node 10': [
+			':index.html:',
+			'area-adv:reference/darwin/area-adv.js.png:ref'
+		]
+	}
+
+platformFailed:
+	{ 'darwin - Node 10': [], 'darwin - Node 8': [] }
+
+*/
+function generateBody(id, platformImages, platformFailed, hash = "0") {
 	return (
 		`
 # screenshot-tester report
@@ -22,105 +84,71 @@ function generateBody(id, platformImages, failed, hash = "0") {
 (The *D* link in the rightmost column opens a diff)
 
 ` +
-		Object.entries(platformImages)
-			.map(([platform, v]) => {
-				const myFailed = failed[platform] || [];
-				const os = translatePlatform(platform);
-				let index;
-				const images = v
-					.map(v => v.split(":"))
-					.reduce((acc, [test, file, type]) => {
-						if (test) {
-							acc[test] = { ...(acc[test] || {}), [type]: file };
-						} else {
-							index = file;
-						}
-						return acc;
-					}, {});
+		Object.entries(
+			Object.entries(platformImages)
+				.sort(([platformA], [platformB]) => platformA < platformB)
+				.reduce((acc, [platform, v]) => {
+					const platformNormalized = getPlatform(platform);
+					acc[platformNormalized] = acc[platformNormalized] || {};
+					acc[platformNormalized][platform] = v;
+					return acc;
+				}, {})
+		)
+			.map(([platformNormalized, v]) => {
+				const data = Object.entries(v).map(([platform, v]) => {
+					const failed = platformFailed[platform] || [];
+					const os = translatePlatform(platform);
+					let index;
+					const images = v
+						.map(v => v.split(":"))
+						.reduce((acc, [test, file, type]) => {
+							if (test) {
+								acc[test] = {
+									...(acc[test] || {}),
+									[type]: file
+								};
+							} else {
+								index = file;
+							}
+							return acc;
+						}, {});
 
-				const failedTestsK = Object.keys(images).filter(
-					k => myFailed.indexOf(k) !== -1
-				);
+					const failedTestsKeys = Object.keys(images).filter(
+						k => failed.indexOf(k) !== -1
+					);
+					const passedTestsKeys = Object.keys(images).filter(
+						k => failed.indexOf(k) === -1
+					);
 
-				const general = `
-## ${failedTestsK.length > 0 ? "❌" : "✅"} ${os}
-${index ? `[Overview](${makeURL(id, index, hash, platform)})` : ""}
+					const header = `
+### ${failedTestsKeys.length > 0 ? "❌" : "✅"} ${os}
+${index ? `[Overview](${makeURL(id, index, hash, platform)})` : ""}`;
 
-${
-					failedTestsK.length > 0
-						? `
-
+					const failedList =
+						failedTestsKeys.length > 0
+							? `
 Failed tests:
 
-<table>
-	<tr>
-		<td>Reference</td>
-		<td>Result</td>
-	</tr>
-${failedTestsK
-								.map(k => {
-									const { ref, res, diff } = images[k];
-									return `<tr><td><img src="${makeURL(
-										id,
-										ref,
-										hash,
-										platform
-									)}"></td><td><img src="${makeURL(
-										id,
-										res,
-										hash,
-										platform
-									)}"></td><td><a target="_blank" href="${makeURL(
-										id,
-										diff,
-										hash,
-										platform
-									)}">D</a></td></tr>`;
-								})
-								.join("\n")}
-</table>`
-						: `<b>All tests passed</b>`
-				}`;
-				const passedTestsK = Object.keys(images).filter(
-					k => myFailed.indexOf(k) == -1
-				);
-				const passedList =
-					passedTestsK.length == 0
-						? ""
-						: `
+${makeTable(id, platform, hash, failedTestsKeys, images)}
+`
+							: "";
+
+					const passedList =
+						passedTestsKeys.length > 0
+							? `
 <summary>Passed tests:</summary>
 <details>
-<table>
-	<tr>
-		<td>Reference</td>
-		<td>Result</td>
-	</tr>
+${makeTable(id, platform, hash, passedTestsKeys, images)}
+</details>`
+							: "";
 
-${passedTestsK
-								.map(k => {
-									const { ref, res, diff } = images[k];
-									return `<tr><td><img src="${makeURL(
-										id,
-										ref,
-										hash,
-										platform
-									)}"></td><td><img src="${makeURL(
-										id,
-										res,
-										hash,
-										platform
-									)}"></td><td><a target="_blank" href="${makeURL(
-										id,
-										diff,
-										hash,
-										platform
-									)}">D</a></td></tr>`;
-								})
-								.join("\n")}
-</table>
-</details>`;
+					return header + failedList + passedList;
+				});
 
-				return general + passedList;
+				return (
+					`## ${translatePlatform(platformNormalized)}\n` +
+					data.join("\n")
+				);
 			})
 			.join("\n") +
 		`
