@@ -59,6 +59,11 @@ ${keys
 </table>`;
 }
 
+const collator = new Intl.Collator(undefined, {
+	numeric: true,
+	sensitivity: "base"
+});
+
 /*
 
 id:
@@ -95,8 +100,10 @@ function generateBody(id, platformImages, platformFailed, hash = "0") {
 				}, {})
 		)
 			.map(([platformNormalized, v]) => {
+				const table = [];
+
 				const data = Object.entries(v)
-					.sort(([a], [b]) => a < b)
+					.sort(([a], [b]) => collator.compare(a, b))
 					.map(([platform, v]) => {
 						const failed = platformFailed[platform] || [];
 						const os = translatePlatform(platform);
@@ -122,8 +129,16 @@ function generateBody(id, platformImages, platformFailed, hash = "0") {
 							k => failed.indexOf(k) === -1
 						);
 
+						table.push([platform, failedTestsKeys.length === 0]);
+						if (
+							failedTestsKeys.length === 0 &&
+							passedTestsKeys.length === 0
+						) {
+							return "";
+						}
+
 						const header = `
-### ${failedTestsKeys.length > 0 ? "❌" : "✅"} ${os}
+### ${os}
 ${index ? `[Overview](${makeURL(id, index, hash, platform)})` : ""}`;
 
 						const failedList =
@@ -138,8 +153,8 @@ ${makeTable(id, platform, hash, failedTestsKeys, images)}
 						const passedList =
 							passedTestsKeys.length > 0
 								? `
-<summary>Passed tests:</summary>
 <details>
+<summary>Passed tests</summary>
 ${makeTable(id, platform, hash, passedTestsKeys, images)}
 </details>`
 								: "";
@@ -148,8 +163,19 @@ ${makeTable(id, platform, hash, passedTestsKeys, images)}
 					});
 
 				return (
-					`\n## ${translatePlatform(platformNormalized)}\n` +
-					data.join("\n")
+					`
+## ${translatePlatform(platformNormalized)}
+
+${
+						table.length > 0
+							? `
+|${table.map(([p]) => translatePlatform(p)).join("|")}|
+|${":---:|".repeat(table.length)}
+|${table.map(([_, passed]) => (passed ? "✅" : "❌")).join("|")}
+`
+							: ""
+					}
+` + data.join("\n")
 				);
 			})
 			.join("\n") +

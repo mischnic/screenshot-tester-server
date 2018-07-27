@@ -281,12 +281,7 @@ module.exports = upload(async (req, res) => {
 					return send(res, 404);
 				}
 
-				if (
-					doc &&
-					doc.files[os] &&
-					doc.files[os][file] &&
-					doc.files[os][file].buffer
-				) {
+				if (doc.files[os][file].buffer) {
 					res.setHeader(
 						"Content-Type",
 						file.endsWith("_html")
