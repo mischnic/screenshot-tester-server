@@ -5,9 +5,8 @@
   "author": "Niklas Mischkulnig",
   "license": "MIT",
   "scripts": {
-    "start": "micro",
+    "start": "micro -l tcp://0.0.0.0:80",
     "dev": "micro-dev",
-    "deploy": "now --public && now alias && now rm screenshot-tester-server -y -s",
     "lint": "prettier --use-tabs --tab-width=4 --write index.js comment.js"
   },
   "dependencies": {
@@ -20,26 +19,9 @@
   },
   "devDependencies": {
     "micro-dev": "^3.0.0",
-    "now": "^11.2.1",
     "prettier": "^1.13.4"
   },
   "engines": {
     "node": ">=10"
-  },
-  "now": {
-    "alias": "screenshot-tester-server.mischnic.ml",
-    "env": {
-      "NODE_ENV": "production",
-      "DOMAIN": "@sts-domain",
-      "DB_URL": "@sts-db",
-      "GH_USER": "mischnic",
-      "GH_TOKEN": "@sts-gh-token"
-    },
-    "files": [
-      "comment.js",
-      "index.js",
-      "package.json",
-      "yarn.lock"
-    ]
   }
 }

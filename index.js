@@ -66,26 +66,26 @@ screenshot-tester-server
 </body>
 </html>`;
 
-const WHITELIST_IP = [
-	// AppVeyor
-	"80.109.227.78",
-	"74.205.54.20",
-	"104.197.110.30",
-	"104.197.145.181",
-	"146.148.85.29",
-	"67.225.139.254",
-	"67.225.138.82",
-	"67.225.139.144",
-	// local
-	"::1",
-	"127.0.0.1",
-	"::ffff:127.0.0.1" // ???
-	// Travis ...
-];
+// const WHITELIST_IP = [
+// 	// AppVeyor
+// 	"80.109.227.78",
+// 	"74.205.54.20",
+// 	"104.197.110.30",
+// 	"104.197.145.181",
+// 	"146.148.85.29",
+// 	"67.225.139.254",
+// 	"67.225.138.82",
+// 	"67.225.139.144",
+// 	// local
+// 	"::1",
+// 	"127.0.0.1",
+// 	"::ffff:127.0.0.1" // ???
+// 	// Travis ...
+// ];
 
-request.get("https://dnsjson.com/nat.travisci.net/A.json").then(v => {
-	WHITELIST_IP.push(...JSON.parse(v).results.records);
-});
+// request.get("https://dnsjson.com/nat.travisci.net/A.json").then(v => {
+// 	WHITELIST_IP.push(...JSON.parse(v).results.records);
+// });
 
 let collection;
 MongoClient.connect(
@@ -168,12 +168,12 @@ module.exports = upload(async (req, res) => {
 
 	if (collection) {
 		if (req.method == "POST") {
-			if (WHITELIST_IP.indexOf(getClientIp(req)) == -1) {
-				console.error(
-					"IP blocked (not whitelisted) - " + getClientIp(req)
-				);
-				return send(res, 403);
-			}
+			// if (WHITELIST_IP.indexOf(getClientIp(req)) == -1) {
+			// 	console.error(
+			// 		"IP blocked (not whitelisted) - " + getClientIp(req)
+			// 	);
+			// 	return send(res, 403);
+			// }
 			let match = req.url.match(regexPOST);
 			// /mischnic/screenshot-tester/2?os=darwin&failed=core-api
 			if (match && os) {
