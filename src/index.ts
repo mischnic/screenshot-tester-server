@@ -12,9 +12,9 @@ import {
 	updateComment,
 	makeComment
 } from "./github";
-import { makeURL } from "./comment";
+import { makeURL, translatePlatform, sort } from "./comment";
 
-import { DataDocument, FileDescriptionType } from "./types";
+import { DataDocument, FileDescription, FileDescriptionType } from "./types";
 
 const { GH_USER, GH_TOKEN, DB_URL, DOMAIN } = process.env;
 const dbName = "sts";
@@ -59,8 +59,9 @@ MongoClient.connect(
 );
 
 //
-const regexPOST = /^\/([\w-]+\/[\w-]+)\/([a-f0-9]+)(?:\?.*)?$/;
-const regexGET = /^\/([\w-]+\/[\w-]+\/[a-f0-9]+)\/[0-9a-f]+\/([\w-%]+)\/([\w-.\/%]+)$/;
+const regexPostData = /^\/([\w-]+\/[\w-]+)\/([a-f0-9]+)(?:\?.*)?$/;
+const regexGetResource = /^\/([\w-]+\/[\w-]+\/[a-f0-9]+)\/[0-9a-f]+\/([\w-%]+)\/([\w-.\/%]+)$/;
+const regexOverview = /^\/([\w-]+\/[\w-]+\/[a-f0-9]+)\/[0-9a-f]+\/?$/;
 const regexCleanup = /^\/cleanup$/;
 
 function checkPermission(repo: string) {
@@ -69,6 +70,15 @@ function checkPermission(repo: string) {
 
 function isCommitSha(id: string) {
 	return id.length === 40;
+}
+
+function findIndexFile(list: FileDescription[]): string {
+	const index = list.find(({ path }) => path.endsWith("index.html"));
+	if (index) {
+		return index.path;
+	} else {
+		return null;
+	}
 }
 
 function getClientIp(req: any) {
@@ -100,7 +110,8 @@ const handler = upload(async (req, res) => {
 			// 	);
 			// 	return send(res, 403);
 			// }
-			let match = req.url.match(regexPOST);
+
+			let match = req.url.match(regexPostData);
 			// /mischnic/screenshot-tester/2?os=darwin&failed=core-api
 			if (match && os) {
 				const [_, repo, issue] = match;
@@ -183,23 +194,23 @@ const handler = upload(async (req, res) => {
 				}
 
 				if (isCommit) {
-					const index = doc.data[os].find(({ path }) =>
-						path.endsWith("index.html")
-					);
+					const index = findIndexFile(doc.data[os]);
 					if (index)
-						return send(res, 200, makeURL(id, index.path, "0", os));
+						return send(res, 200, makeURL(id, index, "0", os));
 					else return send(res, 200);
 				} else return send(res, 200);
 			} else if ((match = req.url.match(regexCleanup))) {
 				// /cleanup
 				Promise.resolve().then(async () => {
 					console.log("[Cleanup] Start");
-					const results = await collection.find().toArray();
+					const results = <DataDocument[]>(
+						await collection.find().toArray()
+					);
 
 					for (let x of results) {
 						const lastSlash = x.id.lastIndexOf("/");
 						const repo = x.id.substr(0, lastSlash),
-							id = x.id.substr(x + 1);
+							id = x.id.substr(lastSlash + 1);
 						if (isCommitSha(id)) {
 							if (!(await commitExists(repo, id))) {
 								await collection.deleteOne({ id: x.id });
@@ -218,7 +229,7 @@ const handler = upload(async (req, res) => {
 				return send(res, 200);
 			}
 		} else if (req.method == "GET") {
-			const match = req.url.match(regexGET);
+			let match = req.url.match(regexGetResource);
 			// /mischnic/screenshot-tester/2/814b27604d7a/os/.../file.png
 
 			if (match) {
@@ -227,7 +238,7 @@ const handler = upload(async (req, res) => {
 				os = decodeURI(os);
 				file = decodeURI(file).replace(/\./g, "_");
 
-				const doc = await collection.findOne({
+				const doc = <DataDocument>await collection.findOne({
 					id
 				});
 
@@ -250,6 +261,39 @@ const handler = upload(async (req, res) => {
 					console.error("missing buffer?");
 					return send(res, 500);
 				}
+			} else if ((match = req.url.match(regexOverview))) {
+				const [_, id] = match;
+
+				const doc = <DataDocument>await collection.findOne({
+					id
+				});
+
+				if (!doc || !doc.files) {
+					return send(res, 404);
+				}
+
+				res.setHeader("Content-Type", "text/html; charset=utf-8");
+
+				let output = `<html><body>`;
+				Object.keys(doc.data)
+					.sort(sort).reverse()
+					.forEach(platform => {
+						const files = doc.data[platform];
+						const index = findIndexFile(files);
+						if (index) {
+							output += `<h3><a href="${makeURL(
+								id,
+								index,
+								"0",
+								platform
+							)}">${translatePlatform(platform)}</a></h3>`;
+						} else {
+							output += `<h3>${translatePlatform(platform)}</h3>`;
+						}
+					});
+				output += `</body></html>`;
+
+				return send(res, 200, output);
 			}
 
 			res.setHeader("Content-Type", "text/html; charset=utf-8");

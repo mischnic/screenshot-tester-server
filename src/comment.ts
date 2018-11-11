@@ -10,11 +10,12 @@ const { DOMAIN } = process.env;
 
 const regexExtensionFromDB = /_(html|png)$/;
 
-const translatePlatform = (platform: string) =>
-	platform
+export function translatePlatform(platform: string) {
+	return platform
 		.replace(/^win/, "Windows ")
 		.replace(/^darwin/, "macOS")
 		.replace(/^linux/, "Linux");
+}
 
 type OS = "win" | "darwin" | "linux";
 
@@ -100,6 +101,10 @@ const collator = new Intl.Collator(undefined, {
 	sensitivity: "base"
 });
 
+export function sort(a: string, b: string) {
+	return collator.compare(a, b);
+}
+
 type NormalizedDataList = { [os in OS]: DataList };
 
 /*
@@ -128,7 +133,7 @@ export default function generateBody(
 	let output = `# screenshot-tester report\n\n(The *D* link in the rightmost column opens a diff)`;
 
 	const normalizedImages = Object.entries(images)
-		.sort(([a], [b]) => collator.compare(a, b))
+		.sort(([a], [b]) => sort(a, b))
 		.reduce(
 			(acc, [platform, d]) => {
 				const os = getPlatform(platform);

@@ -40,6 +40,7 @@ Using environment variables:
 
 - Manually using curl:
 ```sh
+
 # -F "area-adv:temp/area-adv.js_diff.png:diff=@temp/area-adv.js_diff.png" \
 #      test   :destination              :type=@file to upload
 
@@ -68,6 +69,7 @@ curl \
 - **POST**: `https://host.com/[owner]/[repo]/[issue]?os=darwin&failed=my_test`
 
 Create (or update) a comment in the `owner/repo` repository and pull request no. `issue` (or a 40-char commit id). Files are to be sent in a form (curl example above) with the keys indicating the file type and destination path:
+
 ```js
       await request.post({
         url: host + "/" + repoId + "/" + issue,
@@ -87,6 +89,10 @@ When passing a 40-char commit id as `issue`, this will return a url with the res
 - **GET**: `https://host.com/[owner]/[repo]/[issue]/[some hash (hex)]/[os]/path/to/file.ext`
 
 Get a file uploaded previously.
+
+- **GET**: `https://host.com/[owner]/[repo]/[issue]/[some hash (hex)]/`
+
+Output a list of all platforms with links to all `index.html`.
 
 - **POST**: `https://host.com/cleanup`
 
