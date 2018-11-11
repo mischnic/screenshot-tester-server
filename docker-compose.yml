@@ -9,10 +9,6 @@ services:
       WAIT_HOSTS: mongo:27017
       WAIT_SLEEP_INTERVAL: 2
 
-      DOMAIN:
-      DB_URL:
-      GH_USER:
-      GH_TOKEN:
       PORT: 80
   mongo:
     image: mongo

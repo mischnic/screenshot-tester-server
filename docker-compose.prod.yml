@@ -1,0 +1,8 @@
+version: '3'
+services:
+  sts:
+    build: screenshot-tester-server
+    env_file: ./screenshot-tester-server/.env
+  mongo:
+    volumes:
+       - ./screenshot-tester-server/mongodb:/data/db

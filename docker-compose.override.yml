@@ -3,6 +3,7 @@ services:
   sts:
     ports:
       - 80:80
+    env_file: .env
   mongo:
     ports:
       - 27017:27017
