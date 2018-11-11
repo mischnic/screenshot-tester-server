@@ -1,0 +1,63 @@
+TRAVIS_PULL_REQUEST - number - APPVEYOR_PULL_REQUEST_NUMBER
+TRAVIS_REPO_SLUG - owner/repo - APPVEYOR_REPO_NAME
+
+
+
+DOMAIN="https://sts.mischnic.ml" \
+DB_URL="mongodb://server:---@ds147190.mlab.com:47190/screenshot-tester-server" \
+GH_USER="mischnic" \
+GH_TOKEN="c148f0ca94b261008b7b14e95f967743dbd8c88f" \
+yarn dev
+
+
+curl -F "core-api:core-api.png:res=@/Users/niklas/Desktop/terminal.png" -F "controlgallery:controlgallery.png:res=@/Users/niklas/Desktop/terminal.png" \
+localhost:3000/mischnic/screenshot-tester/2?os=darwin
+
+
+curl \
+-F ":index.html:=@/Users/niklas/Desktop/area-clip.js" \
+-F "core-api:temp/core-api.png:res=@/Users/niklas/Desktop/hugin.png" \
+-F "core-api:temp/core-api_diff.png:diff=@/Users/niklas/Desktop/hugin.png" \
+-F "core-api:reference/core-api.png:ref=@/Users/niklas/Desktop/fb.png" \
+-F "controlgallery:temp/controlgallery.png:res=@/Users/niklas/Desktop/hugin.png" \
+-F "controlgallery:temp/controlgallery_diff.png:diff=@/Users/niklas/Desktop/hugin.png" \
+-F "controlgallery:reference/controlgallery.png:ref=@/Users/niklas/Desktop/fb.png" \
+'localhost:3000/mischnic/screenshot-tester/2?failed=core-api&os=darwin'
+
+curl \
+-F ":index.html:=@index.html" \
+-F "area-adv:reference/darwin/area-adv.js.png:ref=@reference/darwin/area-adv.js.png" \
+-F "area-adv:temp/area-adv.js.png:res=@temp/area-adv.js.png" \
+-F "area-adv:temp/area-adv.js_diff.png:diff=@temp/area-adv.js_diff.png" \
+-F "forms:reference/darwin/forms.js.png:ref=@reference/darwin/forms.js.png" \
+-F "forms:temp/forms.js.png:res=@temp/forms.js.png" \
+-F "forms:temp/forms.js_diff.png:diff=@temp/forms.js_diff.png" \
+-F "grid:reference/darwin/grid.js.png:ref=@reference/darwin/grid.js.png" \
+-F "grid:temp/grid.js.png:res=@temp/grid.js.png" \
+-F "grid:temp/grid.js_diff.png:diff=@temp/grid.js_diff.png" \
+-F "node-pad:reference/darwin/node-pad.js.png:ref=@reference/darwin/node-pad.js.png" \
+-F "node-pad:temp/node-pad.js.png:res=@temp/node-pad.js.png" \
+-F "node-pad:temp/node-pad.js_diff.png:diff=@temp/node-pad.js_diff.png" \
+-F "text:reference/darwin/text.js.png:ref=@reference/darwin/text.js.png" \
+-F "text:temp/text.js.png:res=@temp/text.js.png" \
+-F "text:temp/text.js_diff.png:diff=@temp/text.js_diff.png" \
+'https://sts.mischnic.ml/mischnic/screenshot-tester/2?os=darwin'
+
+curl \
+-F ":index.html:=@index.html" \
+-F "area-adv:reference/darwin/area-adv.js.png:ref=@reference/darwin/area-adv.js.png" \
+-F "area-adv:temp/area-adv.js.png:res=@temp/area-adv.js.png" \
+-F "area-adv:temp/area-adv.js_diff.png:diff=@temp/area-adv.js_diff.png" \
+-F "forms:reference/darwin/forms.js.png:ref=@reference/darwin/forms.js.png" \
+-F "forms:temp/forms.js.png:res=@temp/forms.js.png" \
+-F "forms:temp/forms.js_diff.png:diff=@temp/forms.js_diff.png" \
+-F "grid:reference/darwin/grid.js.png:ref=@reference/darwin/grid.js.png" \
+-F "grid:temp/grid.js.png:res=@temp/grid.js.png" \
+-F "grid:temp/grid.js_diff.png:diff=@temp/grid.js_diff.png" \
+-F "node-pad:reference/darwin/node-pad.js.png:ref=@reference/darwin/node-pad.js.png" \
+-F "node-pad:temp/node-pad.js.png:res=@temp/node-pad.js.png" \
+-F "node-pad:temp/node-pad.js_diff.png:diff=@temp/node-pad.js_diff.png" \
+-F "text:reference/darwin/text.js.png:ref=@reference/darwin/text.js.png" \
+-F "text:temp/text.js.png:res=@temp/text.js.png" \
+-F "text:temp/text.js_diff.png:diff=@temp/text.js_diff.png" \
+'https://sts.mischnic.ml/parro-it/libui-napi/42?failed=text&os=darwin'

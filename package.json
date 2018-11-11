@@ -5,9 +5,11 @@
   "author": "Niklas Mischkulnig",
   "license": "MIT",
   "scripts": {
-    "start": "micro -l tcp://0.0.0.0:80",
-    "dev": "micro-dev",
-    "lint": "prettier --use-tabs --tab-width=4 --write index.js comment.js"
+    "watch-ts": "tsc --watch",
+    "dev": "nodemon -q --watch dist dist/index.js",
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "lint": "prettier --use-tabs --tab-width=4 --write src/*.ts typings/**/*.ts"
   },
   "dependencies": {
     "micro": "^9.3.2",
@@ -18,8 +20,17 @@
     "request-promise-native": "^1.0.5"
   },
   "devDependencies": {
+    "@types/micro": "^7.3.3",
+    "@types/mongodb": "^3.1.14",
+    "@types/node": "^10.12.5",
+    "@types/request": "^2.48.1",
+    "@types/request-promise-native": "^1.0.15",
+    "concurrently": "^4.0.1",
     "micro-dev": "^3.0.0",
-    "prettier": "^1.13.4"
+    "nodemon": "^1.18.6",
+    "prettier": "^1.13.4",
+    "ts-node": "^7.0.1",
+    "typescript": "^3.1.6"
   },
   "engines": {
     "node": ">=10"

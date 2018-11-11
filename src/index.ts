@@ -1,14 +1,17 @@
-const { send, sendError, json, buffer, text } = require("micro");
-const { upload, move } = require("micro-upload");
-const query = require("micro-query");
-const request = require("request-promise-native");
-const { MongoClient, Binary } = require("mongodb");
-const crypto = require("crypto");
-const fs = require("fs").promises;
-const generateBody = require("./comment.js");
+import { send, sendError, json, buffer, text } from "micro";
+import FileRequest, { upload, move } from "micro-upload";
+import query from "micro-query";
+import { IncomingMessage, ServerResponse } from "http";
+import mongodb, { MongoClient, Binary } from "mongodb";
+import micro from "micro";
+import { promises as fs } from "fs";
+
+import { commentExists, updateComment, makeComment } from "./github";
+
+import { DataDocument, FileDescriptionType } from "./types";
 
 const { GH_USER, GH_TOKEN, DB_URL, DOMAIN } = process.env;
-const dbName = "screenshot-tester-server";
+const dbName = "sts";
 
 const HOMEPAGE = `<!DOCTYPE html>
 <html>
@@ -83,11 +86,11 @@ screenshot-tester-server
 // 	// Travis ...
 // ];
 
-// request.get("https://dnsjson.com/nat.travisci.net/A.json").then(v => {
+// Request.get("https://dnsjson.com/nat.travisci.net/A.json").then(v => {
 // 	WHITELIST_IP.push(...JSON.parse(v).results.records);
 // });
 
-let collection;
+let collection: mongodb.Collection;
 MongoClient.connect(
 	DB_URL,
 	{ useNewUrlParser: true },
@@ -103,56 +106,14 @@ MongoClient.connect(
 	}
 );
 
-const github = (method, url, body = undefined) =>
-	request({
-		method: method,
-		auth: {
-			user: GH_USER,
-			pass: GH_TOKEN
-		},
-		headers: {
-			"User-Agent": "mischnic - screenshot-tester-server",
-			Accept: "application/json"
-		},
-		url,
-		json: {
-			body: body
-		}
-	});
-
-async function commentExists(url) {
-	try {
-		await github("GET", url);
-		return true;
-	} catch (e) {
-		return false;
-	}
-}
-
-function updateComment(id, url, images, failed) {
-	return github(
-		"PATCH",
-		url,
-		generateBody(id, images, failed, crypto.randomBytes(6).toString("hex"))
-	);
-}
-
-function makeComment(repo, issue, images, failed) {
-	return github(
-		"POST",
-		`https://api.github.com/repos/${repo}/issues/${issue}/comments`,
-		generateBody(`${repo}/${issue}`, images, failed)
-	);
-}
-
 const regexPOST = /^\/([\w-]+\/[\w-]+)\/([0-9]+)(?:\?.*)?$/;
 const regexGET = /^\/([\w-]+\/[\w-]+\/[0-9]+)\/[0-9a-f]+\/([\w-%]+)\/([\w-.\/%]+)$/;
 const regexCleanup = /^\/cleanup$/;
 
-const checkPermission = v =>
+const checkPermission = (v: string) =>
 	v.indexOf("mischnic") == 0 || v.indexOf("parro-it") == 0;
 
-var getClientIp = function(req) {
+function getClientIp(req: any) {
 	return (
 		(
 			req.headers["X-Forwarded-For"] ||
@@ -160,11 +121,18 @@ var getClientIp = function(req) {
 			""
 		).split(",")[0] || req.client.remoteAddress
 	);
-};
+}
 
-module.exports = upload(async (req, res) => {
-	let { failed = [], os } = query(req);
-	if (!Array.isArray(failed)) failed = [failed];
+interface QueryOptions {
+	failed: string[] | string;
+	os: string;
+}
+
+const handler = upload(async (req, res) => {
+	const q = query(req);
+
+	const failed = Array.isArray(q.failed) ? q.failed : [q.failed];
+	const os: string = Array.isArray(q.os) ? q.os[0] : q.os;
 
 	if (collection) {
 		if (req.method == "POST") {
@@ -182,38 +150,48 @@ module.exports = upload(async (req, res) => {
 					console.error("Not allowed - " + repo);
 					return send(res, 403);
 				}
-				req.files = req.files || {};
 
 				const id = `${repo}/${issue}`;
 
-				let doc = { files: { [os]: {} }, data: { [os]: [] }, id };
-				for (let [file, v] of Object.entries(req.files)) {
-					const [_, dst, __] = file.split(":");
+				let doc: DataDocument = {
+					files: { [os]: {} },
+					data: { [os]: [] },
+					id,
+					failed: { [os]: failed },
+					comment_url: ""
+				};
+				for (let [file, v] of Object.entries(req.files || {})) {
+					const [name, path, type] = file.split(":");
 
 					if (Array.isArray(v)) {
 						throw new Error("Duplicate file: " + file);
 					}
-					if (!dst) {
+					if (!path) {
 						return send(res, 400);
 					}
 
 					await move(v, "/tmp/sts_temp");
 
 					const fileData = await fs.readFile("/tmp/sts_temp");
-					doc.files[os][dst.replace(/\./g, "_")] = Binary(fileData);
-					doc.data[os].push(file);
+					doc.files[os][path.replace(/\./g, "_")] = new Binary(
+						fileData
+					);
+					doc.data[os].push({
+						name,
+						path,
+						type: <any>type
+					});
 				}
-				doc.failed = { [os]: failed };
 
-				const oldDoc = await collection.findOne({ id });
+				const oldDoc = <DataDocument>await collection.findOne({ id });
 				if (
 					oldDoc &&
-					oldDoc.comment_url /* && await commentExists(oldDoc.comment_url)*/
+					oldDoc.comment_url &&
+					(await commentExists(oldDoc.comment_url))
 				) {
 					// append images and update comment to contain all
 					doc = {
 						...oldDoc,
-						...doc,
 						files: { ...oldDoc.files, ...doc.files },
 						data: { ...oldDoc.data, ...doc.data },
 						failed: { ...oldDoc.failed, ...doc.failed }
@@ -235,7 +213,7 @@ module.exports = upload(async (req, res) => {
 						repo,
 						issue,
 						doc.data,
-						failed
+						doc.failed
 					);
 					doc.comment_url = comment_url;
 
@@ -250,7 +228,7 @@ module.exports = upload(async (req, res) => {
 
 					for (let x of results) {
 						try {
-							await github("GET", x.comment_url);
+							commentExists(x.comment_url);
 						} catch (e) {
 							if (e.statusCode === 404) {
 								await collection.deleteOne({ id: x.id });
@@ -304,3 +282,5 @@ module.exports = upload(async (req, res) => {
 
 	return send(res, 400);
 });
+
+micro(handler).listen(process.env.PORT || 3000);
