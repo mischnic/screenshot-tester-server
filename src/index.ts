@@ -224,19 +224,16 @@ const handler = upload(async (req, res) => {
 			} else if ((match = req.url.match(regexCleanup))) {
 				// /cleanup
 				Promise.resolve().then(async () => {
+					console.log("[Cleanup] Start");
 					const results = await collection.find().toArray();
 
 					for (let x of results) {
-						try {
-							commentExists(x.comment_url);
-						} catch (e) {
-							if (e.statusCode === 404) {
-								await collection.deleteOne({ id: x.id });
-								console.log("Cleaned up:", x.id);
-							}
+						if(!(await commentExists(x.comment_url))){
+							await collection.deleteOne({ id: x.id });
+							console.log("[Cleanup] removed ", x.id);
 						}
 					}
-					console.log("Cleanup finished");
+					console.log("[Cleanup] Finished");
 				});
 
 				return send(res, 200);

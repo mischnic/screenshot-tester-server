@@ -239,5 +239,5 @@ export default function generateBody(
 		output += platformsOutput;
 	}
 
-	return output + `\n<br>\n*This comment was created automatically by [screenshot-tester-server](https://github.com/mischnic/screenshot-tester-server).*`;
+	return output + `\n<br>\n\n*This comment was created automatically by [screenshot-tester-server](https://github.com/mischnic/screenshot-tester-server).*`;
 }

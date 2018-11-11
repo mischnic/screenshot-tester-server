@@ -13,6 +13,7 @@ services:
       DB_URL:
       GH_USER:
       GH_TOKEN:
+      PORT: 80
   mongo:
     image: mongo
     restart: always

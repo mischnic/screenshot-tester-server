@@ -3,3 +3,6 @@ services:
   sts:
     ports:
       - 80:80
+  mongo:
+    ports:
+      - 27017:27017
