@@ -4,70 +4,22 @@ import query from "micro-query";
 import { IncomingMessage, ServerResponse } from "http";
 import mongodb, { MongoClient, Binary } from "mongodb";
 import micro from "micro";
-import { promises as fs } from "fs";
+import { readFileSync, promises as fs } from "fs";
 
-import { commentExists, updateComment, makeComment } from "./github";
+import {
+	commitExists,
+	commentExists,
+	updateComment,
+	makeComment
+} from "./github";
+import { makeURL } from "./comment";
 
 import { DataDocument, FileDescriptionType } from "./types";
 
 const { GH_USER, GH_TOKEN, DB_URL, DOMAIN } = process.env;
 const dbName = "sts";
 
-const HOMEPAGE = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>
-body {
-	height: 100vh;
-	margin: 0;
-
-	display: flex;
-	justify-content: center;
-	align-items: center;
-}
-a {
-	display: block;
-	text-align: center;
-	color: black;
-	font: 1.7em monospace;
-}
-@media (max-width: 800px) {
-	pre {
-		display: none;
-	}
-}
-</style>
-</head>
-<body>
-<div>
-<a href="https://github.com/mischnic/screenshot-tester-server">
-screenshot-tester-server
-</a>
-<br>
-<pre><code/>
-                             ┌────────────────────────┐
-                             │                        │
-      ┌────────────────────> │     CI build service   │
-      │                      │     (e.g. Travis)      │
-      │                      │                        │
-      │                      └─────────────┬──────────┘
-      │                                    │
-      │                                    │ Upload images & status
-      │                                    │
-      │                                    │
-      │                                    v
-┌─────┴────────┐              ┌───────────────────────────┐                 ┌──────────────────┐
-│              │   Comment    │                           ├───────────────> │                  │
-│    GitHub    │ <────────────│  screenshot-tester-server │   Images/Data   │ MongoDB Database │
-│              │              │                           │ <───────────────┤                  │
-└──────────────┘              └───────────────────────────┘                 └──────────────────┘
-
-</code></pre>
-</div>
-</body>
-</html>`;
+const HOMEPAGE = readFileSync("./test.html");
 
 // const WHITELIST_IP = [
 // 	// AppVeyor
@@ -106,12 +58,18 @@ MongoClient.connect(
 	}
 );
 
-const regexPOST = /^\/([\w-]+\/[\w-]+)\/([0-9]+)(?:\?.*)?$/;
-const regexGET = /^\/([\w-]+\/[\w-]+\/[0-9]+)\/[0-9a-f]+\/([\w-%]+)\/([\w-.\/%]+)$/;
+//
+const regexPOST = /^\/([\w-]+\/[\w-]+)\/([a-f0-9]+)(?:\?.*)?$/;
+const regexGET = /^\/([\w-]+\/[\w-]+\/[a-f0-9]+)\/[0-9a-f]+\/([\w-%]+)\/([\w-.\/%]+)$/;
 const regexCleanup = /^\/cleanup$/;
 
-const checkPermission = (v: string) =>
-	v.indexOf("mischnic") == 0 || v.indexOf("parro-it") == 0;
+function checkPermission(repo: string) {
+	return repo.startsWith("mischnic") || repo.startsWith("parro-it");
+}
+
+function isCommitSha(id: string) {
+	return id.length === 40;
+}
 
 function getClientIp(req: any) {
 	return (
@@ -151,6 +109,8 @@ const handler = upload(async (req, res) => {
 					return send(res, 403);
 				}
 
+				const isCommit = isCommitSha(issue);
+
 				const id = `${repo}/${issue}`;
 
 				let doc: DataDocument = {
@@ -186,8 +146,7 @@ const handler = upload(async (req, res) => {
 				const oldDoc = <DataDocument>await collection.findOne({ id });
 				if (
 					oldDoc &&
-					oldDoc.comment_url &&
-					(await commentExists(oldDoc.comment_url))
+					(isCommit || (await commentExists(oldDoc.comment_url)))
 				) {
 					// append images and update comment to contain all
 					doc = {
@@ -197,30 +156,36 @@ const handler = upload(async (req, res) => {
 						failed: { ...oldDoc.failed, ...doc.failed }
 					};
 
-					await updateComment(
-						id,
-						oldDoc.comment_url,
-						doc.data,
-						doc.failed
-					);
+					if (!isCommit)
+						await updateComment(
+							id,
+							oldDoc.comment_url,
+							doc.data,
+							doc.failed
+						);
 
 					await collection.findOneAndReplace({ id }, doc, {
 						upsert: true
 					});
 				} else {
 					// create a new comment
-					const { url: comment_url } = await makeComment(
-						repo,
-						issue,
-						doc.data,
-						doc.failed
-					);
-					doc.comment_url = comment_url;
+					if (!isCommit) {
+						const { url: comment_url } = await makeComment(
+							repo,
+							issue,
+							doc.data,
+							doc.failed
+						);
+						doc.comment_url = comment_url;
+					}
 
 					await collection.insertOne(doc);
 				}
 
-				return send(res, 200);
+				if (isCommit) {
+					const index = doc.data[os].find(({path}) => path.endsWith("index.html")).path;
+					return send(res, 200, makeURL(id, index, "0", os));
+				} else return send(res, 200);
 			} else if ((match = req.url.match(regexCleanup))) {
 				// /cleanup
 				Promise.resolve().then(async () => {
@@ -228,9 +193,19 @@ const handler = upload(async (req, res) => {
 					const results = await collection.find().toArray();
 
 					for (let x of results) {
-						if(!(await commentExists(x.comment_url))){
-							await collection.deleteOne({ id: x.id });
-							console.log("[Cleanup] removed ", x.id);
+						const lastSlash = x.id.lastIndexOf("/");
+						const repo = x.id.substr(0, lastSlash),
+							id = x.id.substr(x + 1);
+						if (isCommitSha(id)) {
+							if (!(await commitExists(repo, id))) {
+								await collection.deleteOne({ id: x.id });
+								console.log("[Cleanup] removed commit ", x.id);
+							}
+						} else {
+							if (!(await commentExists(x.comment_url))) {
+								await collection.deleteOne({ id: x.id });
+								console.log("[Cleanup] removed pr ", x.id);
+							}
 						}
 					}
 					console.log("[Cleanup] Finished");
@@ -271,6 +246,7 @@ const handler = upload(async (req, res) => {
 				}
 			}
 
+			res.setHeader("Content-Type", "text/html; charset=utf-8")
 			return send(res, 200, HOMEPAGE);
 		}
 	} else {

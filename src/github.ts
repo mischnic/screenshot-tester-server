@@ -59,3 +59,15 @@ export function makeComment(
 		generateBody(`${repo}/${issue}`, images, failed)
 	);
 }
+
+export async function commitExists(repo: string, sha: string) {
+	try {
+		await github(
+			"GET",
+			`https://api.github.com/repos/${repo}/commits/${sha}`
+		);
+		return true;
+	} catch (e) {
+		return false;
+	}
+}

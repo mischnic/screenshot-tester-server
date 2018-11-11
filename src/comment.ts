@@ -29,7 +29,7 @@ const getPlatform = (s: string): OS => {
 	return null;
 };
 
-const makeURL = (id: string, file: string, hash: string, os: string) => {
+export const makeURL = (id: string, file: string, hash: string, os: string) => {
 	if (file && file.indexOf(DOMAIN) == -1) {
 		return encodeURI(
 			`${DOMAIN}/${id}/${hash}/${os}/${file.replace(
@@ -239,5 +239,8 @@ export default function generateBody(
 		output += platformsOutput;
 	}
 
-	return output + `\n<br>\n\n*This comment was created automatically by [screenshot-tester-server](https://github.com/mischnic/screenshot-tester-server).*`;
+	return (
+		output +
+		`\n<br>\n\n*This comment was created automatically by [screenshot-tester-server](https://github.com/mischnic/screenshot-tester-server).*`
+	);
 }

@@ -67,7 +67,7 @@ curl \
 
 - **POST**: `https://host.com/[owner]/[repo]/[issue]?os=darwin&failed=my_test`
 
-Create (or update) a comment in the `owner/repo` repository and pull request no. `issue`. Files are to be sent in a form (curl example above) with the keys indicating the file type and destination path:
+Create (or update) a comment in the `owner/repo` repository and pull request no. `issue` (or a 40-char commit id). Files are to be sent in a form (curl example above) with the keys indicating the file type and destination path:
 ```js
       await request.post({
         url: host + "/" + repoId + "/" + issue,
@@ -81,6 +81,8 @@ Create (or update) a comment in the `owner/repo` repository and pull request no.
         }
       });
 ```
+
+When passing a 40-char commit id as `issue`, this will return a url with the result.
 
 - **GET**: `https://host.com/[owner]/[repo]/[issue]/[some hash (hex)]/[os]/path/to/file.ext`
 
