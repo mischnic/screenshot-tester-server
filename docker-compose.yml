@@ -15,3 +15,5 @@ services:
     restart: always
     volumes:
       - ./mongodb:/data/db
+    ports:
+      - 27017:27017
