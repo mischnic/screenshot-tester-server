@@ -183,8 +183,12 @@ const handler = upload(async (req, res) => {
 				}
 
 				if (isCommit) {
-					const index = doc.data[os].find(({path}) => path.endsWith("index.html")).path;
-					return send(res, 200, makeURL(id, index, "0", os));
+					const index = doc.data[os].find(({ path }) =>
+						path.endsWith("index.html")
+					);
+					if (index)
+						return send(res, 200, makeURL(id, index.path, "0", os));
+					else return send(res, 200);
 				} else return send(res, 200);
 			} else if ((match = req.url.match(regexCleanup))) {
 				// /cleanup
@@ -242,14 +246,17 @@ const handler = upload(async (req, res) => {
 
 					return send(res, 200, doc.files[os][file].buffer);
 				} else {
+					console.error(req.url);
+					console.error("missing buffer?");
 					return send(res, 500);
 				}
 			}
 
-			res.setHeader("Content-Type", "text/html; charset=utf-8")
+			res.setHeader("Content-Type", "text/html; charset=utf-8");
 			return send(res, 200, HOMEPAGE);
 		}
 	} else {
+		console.error("No db connection!");
 		return send(res, 500);
 	}
 
