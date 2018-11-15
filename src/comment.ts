@@ -32,12 +32,13 @@ const getPlatform = (s: string): OS => {
 
 export const makeURL = (id: string, file: string, hash: string, os: string) => {
 	if (file && file.indexOf(DOMAIN) == -1) {
-		return encodeURI(
-			`${DOMAIN}/${id}/${hash}/${os}/${file.replace(
+		const url =
+			`${DOMAIN}/${id}/${os}/${file.replace(
 				regexExtensionFromDB,
 				".$1"
-			)}`
-		);
+			)}` + (hash ? `?hash=${hash}` : "");
+
+		return encodeURI(url);
 	} else return file;
 };
 
@@ -128,7 +129,7 @@ export default function generateBody(
 	id: string,
 	images: DataList,
 	failed: FailedList,
-	hash = "0"
+	hash: string = null
 ): string {
 	let output = `# screenshot-tester report\n\n(The *D* link in the rightmost column opens a diff)`;
 

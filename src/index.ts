@@ -1,6 +1,6 @@
 import { send, sendError, json, buffer, text } from "micro";
-import FileRequest, { upload, move } from "micro-upload";
-import query from "micro-query";
+import { router, get, post, IncomingMessageFork } from "micro-fork";
+import { upload, move, IncomingMessageFile } from "micro-upload";
 import { IncomingMessage, ServerResponse } from "http";
 import mongodb, { MongoClient, Binary } from "mongodb";
 import micro from "micro";
@@ -91,19 +91,24 @@ function getClientIp(req: any) {
 	);
 }
 
-interface QueryOptions {
-	failed: string[] | string;
-	os: string;
+function checkDBConnection(res: ServerResponse) {
+	if (!collection) {
+		console.error("No db connection!");
+		send(res, 500);
+		return false;
+	}
+	return true;
 }
 
-const handler = upload(async (req, res) => {
-	const q = query(req);
+interface IncomingMessageForkFile
+	extends IncomingMessageFork,
+		IncomingMessageFile {}
 
-	const failed = Array.isArray(q.failed) ? q.failed : [q.failed];
-	const os: string = Array.isArray(q.os) ? q.os[0] : q.os;
-
-	if (collection) {
-		if (req.method == "POST") {
+const routes = [
+	post(
+		"/:user/:repo/:issue",
+		upload(async (req: IncomingMessageForkFile, res) => {
+			// /mischnic/screenshot-tester/2?os=darwin&failed=core-api
 			// if (WHITELIST_IP.indexOf(getClientIp(req)) == -1) {
 			// 	console.error(
 			// 		"IP blocked (not whitelisted) - " + getClientIp(req)
@@ -111,200 +116,222 @@ const handler = upload(async (req, res) => {
 			// 	return send(res, 403);
 			// }
 
-			let match = req.url.match(regexPostData);
-			// /mischnic/screenshot-tester/2?os=darwin&failed=core-api
-			if (match && os) {
-				const [_, repo, issue] = match;
-				if (!checkPermission(repo)) {
-					console.error("Not allowed - " + repo);
-					return send(res, 403);
+			if (!checkDBConnection(res)) return;
+
+			const failed = Array.isArray(req.query.failed)
+				? req.query.failed
+				: [req.query.failed];
+			const os = Array.isArray(req.query.os)
+				? req.query.os[0]
+				: req.query.os;
+			if (!os) {
+				return send(res, 400);
+			}
+
+			const { user, repo, issue } = req.params;
+			if (!checkPermission(`${user}/${repo}`)) {
+				console.error("Not allowed - " + `${user}/${repo}`);
+				return send(res, 403);
+			}
+
+			const isCommit = isCommitSha(issue);
+			const slug = `${user}/${repo}`;
+			const id = `${slug}/${issue}`;
+
+			let doc: DataDocument = {
+				files: { [os]: {} },
+				data: { [os]: [] },
+				id,
+				failed: { [os]: failed },
+				comment_url: ""
+			};
+			for (let [file, v] of Object.entries(req.files || {})) {
+				const [name, path, type] = file.split(":");
+				if (Array.isArray(v)) {
+					throw new Error("Duplicate file: " + file);
 				}
-
-				const isCommit = isCommitSha(issue);
-
-				const id = `${repo}/${issue}`;
-
-				let doc: DataDocument = {
-					files: { [os]: {} },
-					data: { [os]: [] },
-					id,
-					failed: { [os]: failed },
-					comment_url: ""
+				if (!path) {
+					return send(res, 400);
+				}
+				await move(v, "/tmp/sts_temp");
+				const fileData = await fs.readFile("/tmp/sts_temp");
+				doc.files[os][path.replace(/\./g, "_")] = new Binary(fileData);
+				doc.data[os].push({
+					name,
+					path,
+					type: <any>type
+				});
+			}
+			const oldDoc = <DataDocument>await collection.findOne({ id });
+			if (
+				oldDoc &&
+				(isCommit || (await commentExists(oldDoc.comment_url)))
+			) {
+				// append images and update comment to contain all
+				doc = {
+					...oldDoc,
+					files: { ...oldDoc.files, ...doc.files },
+					data: { ...oldDoc.data, ...doc.data },
+					failed: { ...oldDoc.failed, ...doc.failed }
 				};
-				for (let [file, v] of Object.entries(req.files || {})) {
-					const [name, path, type] = file.split(":");
-
-					if (Array.isArray(v)) {
-						throw new Error("Duplicate file: " + file);
-					}
-					if (!path) {
-						return send(res, 400);
-					}
-
-					await move(v, "/tmp/sts_temp");
-
-					const fileData = await fs.readFile("/tmp/sts_temp");
-					doc.files[os][path.replace(/\./g, "_")] = new Binary(
-						fileData
-					);
-					doc.data[os].push({
-						name,
-						path,
-						type: <any>type
-					});
-				}
-
-				const oldDoc = <DataDocument>await collection.findOne({ id });
-				if (
-					oldDoc &&
-					(isCommit || (await commentExists(oldDoc.comment_url)))
-				) {
-					// append images and update comment to contain all
-					doc = {
-						...oldDoc,
-						files: { ...oldDoc.files, ...doc.files },
-						data: { ...oldDoc.data, ...doc.data },
-						failed: { ...oldDoc.failed, ...doc.failed }
-					};
-
-					if (!isCommit)
+				if (!isCommit) {
+					try {
 						await updateComment(
-							id,
+							slug,
 							oldDoc.comment_url,
 							doc.data,
 							doc.failed
 						);
-
-					await collection.findOneAndReplace({ id }, doc, {
-						upsert: true
-					});
-				} else {
-					// create a new comment
-					if (!isCommit) {
+					} catch (e) {
+						console.error(
+							`Updating github comment failed for ${id}`,
+							e.status,
+							e.messsage
+						);
+						return send(res, 500, "Updating github comment failed");
+					}
+				}
+				await collection.findOneAndReplace({ id }, doc, {
+					upsert: true
+				});
+			} else {
+				// create a new comment
+				if (!isCommit) {
+					try {
 						const { url: comment_url } = await makeComment(
-							repo,
+							slug,
 							issue,
 							doc.data,
 							doc.failed
 						);
 						doc.comment_url = comment_url;
+					} catch (e) {
+						console.error(
+							`Creating github comment failed for ${id}`,
+							e.status,
+							e.messsage
+						);
+						return send(res, 500, "Creating github comment failed");
 					}
-
-					await collection.insertOne(doc);
 				}
-
-				if (isCommit) {
-					const index = findIndexFile(doc.data[os]);
-					if (index)
-						return send(res, 200, makeURL(id, index, "0", os));
-					else return send(res, 200);
-				} else return send(res, 200);
-			} else if ((match = req.url.match(regexCleanup))) {
-				// /cleanup
-				Promise.resolve().then(async () => {
-					console.log("[Cleanup] Start");
-					const results = <DataDocument[]>(
-						await collection.find().toArray()
-					);
-
-					for (let x of results) {
-						const lastSlash = x.id.lastIndexOf("/");
-						const repo = x.id.substr(0, lastSlash),
-							id = x.id.substr(lastSlash + 1);
-						if (isCommitSha(id)) {
-							if (!(await commitExists(repo, id))) {
-								await collection.deleteOne({ id: x.id });
-								console.log("[Cleanup] removed commit ", x.id);
-							}
-						} else {
-							if (!(await commentExists(x.comment_url))) {
-								await collection.deleteOne({ id: x.id });
-								console.log("[Cleanup] removed pr ", x.id);
-							}
-						}
-					}
-					console.log("[Cleanup] Finished");
-				});
-
-				return send(res, 200);
+				await collection.insertOne(doc);
 			}
-		} else if (req.method == "GET") {
-			let match = req.url.match(regexGetResource);
-			// /mischnic/screenshot-tester/2/814b27604d7a/os/.../file.png
+			if (isCommit) {
+				const index = findIndexFile(doc.data[os]);
+				if (index) return send(res, 200, makeURL(id, index, null, os));
+				else return send(res, 200);
+			} else return send(res, 200);
+		})
+	),
 
-			if (match) {
-				let [_, id, os, file] = match;
+	post("/cleanup", async (req, res) => {
+		if (!checkDBConnection(res)) return;
 
-				os = decodeURI(os);
-				file = decodeURI(file).replace(/\./g, "_");
-
-				const doc = <DataDocument>await collection.findOne({
-					id
-				});
-
-				if (!doc || !doc.files[os] || !doc.files[os][file]) {
-					return send(res, 404);
-				}
-
-				if (doc.files[os][file].buffer) {
-					res.setHeader(
-						"Content-Type",
-						file.endsWith("_html")
-							? "text/html; charset=utf-8"
-							: "image/png"
-					);
-					res.setHeader("Cache-Control", "public, max-age=1209600");
-
-					return send(res, 200, doc.files[os][file].buffer);
+		Promise.resolve().then(async () => {
+			console.log("[Cleanup] Start");
+			const results = <DataDocument[]>await collection.find().toArray();
+			for (let x of results) {
+				const lastSlash = x.id.lastIndexOf("/");
+				const repo = x.id.substr(0, lastSlash),
+					id = x.id.substr(lastSlash + 1);
+				if (isCommitSha(id)) {
+					if (!(await commitExists(repo, id))) {
+						await collection.deleteOne({ id: x.id });
+						console.log("[Cleanup] removed commit", x.id);
+					}
 				} else {
-					console.error(req.url);
-					console.error("missing buffer?");
-					return send(res, 500);
+					if (!(await commentExists(x.comment_url))) {
+						await collection.deleteOne({ id: x.id });
+						console.log("[Cleanup] removed pr", x.id);
+					}
 				}
-			} else if ((match = req.url.match(regexOverview))) {
-				const [_, id] = match;
-
-				const doc = <DataDocument>await collection.findOne({
-					id
-				});
-
-				if (!doc || !doc.files) {
-					return send(res, 404);
-				}
-
-				res.setHeader("Content-Type", "text/html; charset=utf-8");
-
-				let output = `<html><body>`;
-				Object.keys(doc.data)
-					.sort(sort).reverse()
-					.forEach(platform => {
-						const files = doc.data[platform];
-						const index = findIndexFile(files);
-						if (index) {
-							output += `<h3><a href="${makeURL(
-								id,
-								index,
-								"0",
-								platform
-							)}">${translatePlatform(platform)}</a></h3>`;
-						} else {
-							output += `<h3>${translatePlatform(platform)}</h3>`;
-						}
-					});
-				output += `</body></html>`;
-
-				return send(res, 200, output);
 			}
+			console.log("[Cleanup] Finished");
+		});
+		return send(res, 200);
+	}),
 
-			res.setHeader("Content-Type", "text/html; charset=utf-8");
-			return send(res, 200, HOMEPAGE);
+	get("/:user/:repo/:issue/:os/*", async (req, res) => {
+		// /mischnic/screenshot-tester/2/814b27604d7a/os/.../file.png
+		if (!checkDBConnection(res)) return;
+
+		let { user, repo, issue, os, "*": file } = req.params;
+		const hash = Array.isArray(req.query.hash)
+			? req.query.hash[0]
+			: req.query.hash;
+
+		const id = `${user}/${repo}/${issue}`;
+
+		file = file.replace(/\./g, "_");
+
+		const doc = <DataDocument>await collection.findOne({
+			id
+		});
+
+		if (!doc || !doc.files[os] || !doc.files[os][file]) {
+			return send(res, 404);
 		}
-	} else {
-		console.error("No db connection!");
-		return send(res, 500);
-	}
 
-	return send(res, 400);
-});
+		if (doc.files[os][file].buffer) {
+			res.setHeader(
+				"Content-Type",
+				file.endsWith("_html")
+					? "text/html; charset=utf-8"
+					: "image/png"
+			);
+			if(hash)
+				res.setHeader("Cache-Control", "public, max-age=1209600");
 
-micro(handler).listen(process.env.PORT || 3000);
+			return send(res, 200, doc.files[os][file].buffer);
+		} else {
+			console.error(req.url);
+			console.error("missing buffer?");
+			return send(res, 500);
+		}
+	}),
+	get("/:user/:repo/:issue/", async (req, res) => {
+		if (!checkDBConnection(res)) return;
+
+		const { user, repo, issue } = req.params;
+
+		const id = `${user}/${repo}/${issue}`;
+
+		const doc = <DataDocument>await collection.findOne({
+			id
+		});
+
+		if (!doc || !doc.files) {
+			return send(res, 404);
+		}
+
+		res.setHeader("Content-Type", "text/html; charset=utf-8");
+
+		let output = `<html><body>`;
+		Object.keys(doc.data)
+			.sort(sort)
+			.reverse()
+			.forEach(platform => {
+				const files = doc.data[platform];
+				const index = findIndexFile(files);
+				if (index) {
+					output += `<h3><a href="${makeURL(
+						id,
+						index,
+						null,
+						platform
+					)}">${translatePlatform(platform)}</a></h3>`;
+				} else {
+					output += `<h3>${translatePlatform(platform)}</h3>`;
+				}
+			});
+		output += `</body></html>`;
+
+		return send(res, 200, output);
+	}),
+	get("*", async (req, res) => {
+		res.setHeader("Content-Type", "text/html; charset=utf-8");
+		return send(res, 200, HOMEPAGE);
+	})
+];
+
+micro(router()(...routes)).listen(process.env.PORT || 3000);
