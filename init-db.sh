@@ -7,3 +7,7 @@ db.createUser({
 		role: "readWrite", db: "sts"
 	}]
 })
+
+db.createCollection("images")
+
+db.images.createIndex({ id: -1 }, { unique: true })
