@@ -193,7 +193,7 @@ export default function generateBody(
 			}
 
 			if (failedPlatformKeys.length > 0) {
-				platformsOutput += "Failed tests\n";
+				platformsOutput += "Failed tests:\n";
 				platformsOutput +=
 					makeTable(
 						id,
@@ -204,7 +204,7 @@ export default function generateBody(
 					) + "\n";
 				platformStatus[platform] = false;
 			} else {
-				platformsOutput += "**All tests passed**\n";
+				platformsOutput += "**All tests passed!**\n";
 				platformStatus[platform] = true;
 			}
 
