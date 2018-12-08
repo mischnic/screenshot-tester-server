@@ -177,7 +177,7 @@ const routes = [
 				if (!isCommit) {
 					try {
 						await updateComment(
-							slug,
+							id,
 							oldDoc.comment_url,
 							doc.data,
 							doc.failed
@@ -279,8 +279,7 @@ const routes = [
 					? "text/html; charset=utf-8"
 					: "image/png"
 			);
-			if(hash)
-				res.setHeader("Cache-Control", "public, max-age=1209600");
+			if (hash) res.setHeader("Cache-Control", "public, max-age=1209600");
 
 			return send(res, 200, doc.files[os][file].buffer);
 		} else {
